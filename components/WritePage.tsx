@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Github, Settings, Loader2, Paperclip, Eye, Edit3, Image as ImageIcon, X } from 'lucide-react';
@@ -193,6 +194,7 @@ ${safeContent}
         newFileContent = currentFileContent.slice(0, insertIndex + marker.length) + "\n" + articleObject + currentFileContent.slice(insertIndex + marker.length);
       }
 
+      // Fixed: Resolved syntax error in ternary operator template literal
       await updateFileContent(config, newFileContent, sha, { message: `${isEdit ? 'Update' : 'Publish'}: ${title}` });
       addLog(`$ git push origin main --verified`);
       addLog(`$ Success. Paper index updated.`);
@@ -213,38 +215,38 @@ ${safeContent}
       }
       setIsPublishing(false); // Stop spinning on error
     } finally {
-      // We keep isPublishing true unless an error occurred so that the "Pushing Paper..." button stays
+      // We keep isPublishing true unless an error occurred
     }
   };
 
   return (
     <div className="max-w-screen-md mx-auto px-4 mt-8 pb-32 font-sans relative z-10">
       {isProcessingFile && (
-        <div className="fixed inset-0 bg-white/90 backdrop-blur-xl z-[100] flex flex-col items-center justify-center">
-          <Loader2 className="animate-spin text-black mb-4" size={56} />
-          <h2 className="text-2xl font-bold tracking-tight">Extracting Document...</h2>
+        <div className="fixed inset-0 bg-white/90 dark:bg-black/90 backdrop-blur-xl z-[100] flex flex-col items-center justify-center">
+          <Loader2 className="animate-spin text-black dark:text-white mb-4" size={56} />
+          <h2 className="text-2xl font-bold tracking-tight text-black dark:text-white">Extracting Document...</h2>
           <p className="text-gray-400 mt-2 text-sm">Processing local buffers.</p>
         </div>
       )}
 
-      <div className="mb-16 flex justify-between items-center border-b border-gray-100 pb-6">
-        <Link to={editArticle ? `/article/${editArticle.id}` : "/"} className="text-gray-400 hover:text-black flex items-center gap-2 text-sm font-bold tracking-tight">
+      <div className="mb-16 flex justify-between items-center border-b border-gray-100 dark:border-zinc-800 pb-6">
+        <Link to={editArticle ? `/article/${editArticle.id}` : "/"} className="text-gray-400 dark:text-zinc-500 hover:text-black dark:hover:text-white flex items-center gap-2 text-sm font-bold tracking-tight">
           <ArrowLeft size={16} /> {editArticle ? 'CANCEL EDIT' : 'DASHBOARD'}
         </Link>
         
         <div className="flex gap-8 items-center">
           <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".pdf,.doc,.docx,.md" />
-          <button onClick={() => fileInputRef.current?.click()} className="text-gray-400 hover:text-black flex items-center gap-2 text-xs font-bold uppercase tracking-widest">
+          <button onClick={() => fileInputRef.current?.click()} className="text-gray-400 dark:text-zinc-500 hover:text-black dark:hover:text-white flex items-center gap-2 text-xs font-bold uppercase tracking-widest">
             <Paperclip size={14} /> <span>{editArticle ? 'Replace Doc' : 'Upload doc'}</span>
           </button>
           
-          <div className="h-6 w-px bg-gray-200" />
+          <div className="h-6 w-px bg-gray-200 dark:bg-zinc-800" />
 
-          <button onClick={() => setIsPreview(!isPreview)} className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-black hover:opacity-60 transition-opacity">
+          <button onClick={() => setIsPreview(!isPreview)} className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-black dark:text-white hover:opacity-60 transition-opacity">
             {isPreview ? <><Edit3 size={14} /> Write</> : <><Eye size={14} /> View Render</>}
           </button>
           
-          <button onClick={() => setShowSettings(true)} className="text-gray-300 hover:text-black"><Settings size={20} /></button>
+          <button onClick={() => setShowSettings(true)} className="text-gray-300 dark:text-zinc-600 hover:text-black dark:hover:text-white"><Settings size={20} /></button>
         </div>
       </div>
 
@@ -252,7 +254,7 @@ ${safeContent}
         <div className="flex flex-col gap-8 animate-in fade-in duration-500">
           <div className="mb-4">
              {image ? (
-               <div className="relative group rounded-3xl overflow-hidden border border-gray-100 shadow-sm max-h-[300px]">
+               <div className="relative group rounded-3xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm max-h-[300px]">
                   <img src={image} alt="Cover Preview" className="w-full h-auto object-cover" />
                   <button onClick={() => setImage('')} className="absolute top-4 right-4 p-2 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                     <X size={20} />
@@ -260,17 +262,17 @@ ${safeContent}
                </div>
              ) : (
                <div className="flex flex-col gap-4">
-                 <button onClick={() => imageInputRef.current?.click()} className="w-full h-32 border-2 border-dashed border-gray-100 rounded-3xl flex flex-col items-center justify-center text-gray-300 hover:border-black hover:text-black transition-all group">
+                 <button onClick={() => imageInputRef.current?.click()} className="w-full h-32 border-2 border-dashed border-gray-100 dark:border-zinc-800 rounded-3xl flex flex-col items-center justify-center text-gray-300 dark:text-zinc-600 hover:border-black dark:hover:border-zinc-400 hover:text-black dark:hover:text-white transition-all group">
                     <ImageIcon size={32} className="mb-2 group-hover:scale-110 transition-transform" />
                     <span className="text-[10px] font-bold uppercase tracking-widest">Add Research Figure / Cover Image</span>
                     <input type="file" ref={imageInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
                  </button>
-                 <div className="flex items-center gap-2 text-[10px] font-sans text-gray-400 uppercase tracking-widest px-4">
+                 <div className="flex items-center gap-2 text-[10px] font-sans text-gray-400 dark:text-zinc-600 uppercase tracking-widest px-4">
                    <span>OR PASTE URL</span>
                    <input 
                       type="text" 
                       placeholder="https://..." 
-                      className="flex-1 bg-transparent border-none outline-none focus:ring-0 text-black placeholder-gray-200"
+                      className="flex-1 bg-transparent border-none outline-none focus:ring-0 text-black dark:text-white placeholder-gray-200 dark:placeholder-zinc-800"
                       value={image}
                       onChange={(e) => setImage(e.target.value)}
                    />
@@ -282,39 +284,39 @@ ${safeContent}
           <input 
             type="text" 
             placeholder="Full Paper Title" 
-            className="text-4xl md:text-6xl font-sans font-bold placeholder-gray-100 border-none outline-none focus:ring-0 bg-transparent p-0 text-medium-black leading-[1.1] tracking-tighter"
+            className="text-4xl md:text-6xl font-sans font-bold placeholder-gray-100 dark:placeholder-zinc-900 border-none outline-none focus:ring-0 bg-transparent p-0 text-medium-black dark:text-white leading-[1.1] tracking-tighter"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
           <input 
             type="text" 
             placeholder="Abstract (One line summary)" 
-            className="text-xl md:text-2xl font-serif text-gray-400 placeholder-gray-100 border-none outline-none focus:ring-0 bg-transparent p-0 leading-relaxed italic"
+            className="text-xl md:text-2xl font-serif text-gray-400 dark:text-zinc-500 placeholder-gray-100 dark:placeholder-zinc-900 border-none outline-none focus:ring-0 bg-transparent p-0 leading-relaxed italic"
             value={subtitle}
             onChange={(e) => setSubtitle(e.target.value)}
           />
-          <div className="flex items-center gap-4 text-[10px] font-sans text-gray-400 uppercase tracking-[0.3em] font-black border-y border-gray-50 py-4">
+          <div className="flex items-center gap-4 text-[10px] font-sans text-gray-400 dark:text-zinc-600 uppercase tracking-[0.3em] font-black border-y border-gray-50 dark:border-zinc-900 py-4">
              <span>Keywords</span>
              <input 
                 type="text" 
                 placeholder="AI, SYSTEMS, RESEARCH" 
-                className="flex-1 font-sans border-none outline-none focus:ring-0 bg-transparent p-0 text-black placeholder-gray-200"
+                className="flex-1 font-sans border-none outline-none focus:ring-0 bg-transparent p-0 text-black dark:text-white placeholder-gray-200 dark:placeholder-zinc-800"
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}
              />
           </div>
           <textarea 
             placeholder="Paper Content (Markdown supported)..." 
-            className="w-full text-xl leading-relaxed font-serif text-medium-black/90 placeholder-gray-100 border-none outline-none focus:ring-0 bg-transparent p-0 resize-none min-h-[60vh]"
+            className="w-full text-xl leading-relaxed font-serif text-medium-black/90 dark:text-zinc-200 placeholder-gray-100 dark:placeholder-zinc-900 border-none outline-none focus:ring-0 bg-transparent p-0 resize-none min-h-[60vh]"
             value={content}
             onChange={(e) => setContent(e.target.value)}
           />
         </div>
       ) : (
-        <div className="bg-white p-8 md:p-16 rounded-[3rem] border border-gray-100 shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white dark:bg-[#0c0c0c] p-8 md:p-16 rounded-[3rem] border border-gray-100 dark:border-zinc-800 shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-500 transition-colors duration-300">
           <header className="mb-12">
-            <h1 className="text-4xl md:text-5xl font-sans font-bold text-medium-black mb-6 tracking-tight leading-tight">{title || 'Untitled Research'}</h1>
-            <p className="text-xl text-gray-400 font-serif leading-relaxed italic border-l-4 border-black pl-8">{subtitle || 'No abstract defined.'}</p>
+            <h1 className="text-4xl md:text-5xl font-sans font-bold text-medium-black dark:text-white mb-6 tracking-tight leading-tight">{title || 'Untitled Research'}</h1>
+            <p className="text-xl text-gray-400 dark:text-zinc-500 font-serif leading-relaxed italic border-l-4 border-black dark:border-white pl-8">{subtitle || 'No abstract defined.'}</p>
           </header>
           {image && <img src={image} className="w-full h-auto rounded-2xl mb-12 shadow-sm" alt="Preview" />}
           <div className="article-body">
@@ -327,7 +329,7 @@ ${safeContent}
           <button 
               onClick={handlePublishToGitHub}
               disabled={!title || !content || (isPublishing && showTerminal)}
-              className="bg-black text-white font-sans font-bold px-10 py-5 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.3)] hover:scale-105 active:scale-95 disabled:opacity-20 transition-all flex items-center gap-4 group"
+              className="bg-black dark:bg-zinc-800 text-white font-sans font-bold px-10 py-5 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.3)] hover:scale-105 active:scale-95 disabled:opacity-20 transition-all flex items-center gap-4 group"
           >
               {isPublishing ? <Loader2 size={24} className="animate-spin" /> : <Github size={24} className="group-hover:rotate-12 transition-transform" />}
               <span className="text-sm uppercase tracking-widest">{isPublishing ? 'Pushing Paper...' : (editArticle ? 'Update Publication' : 'Verify & Publish')}</span>
@@ -340,7 +342,6 @@ ${safeContent}
           onClick={() => {
               if (!isPublishing) setShowTerminal(false);
               else {
-                  // If stuck, allow escape anyway after a warning logic or simple click
                   setShowTerminal(false);
                   setIsPublishing(false);
               }
@@ -350,7 +351,6 @@ ${safeContent}
               className="w-full max-w-2xl bg-[#0a0a0a] rounded-3xl overflow-hidden border border-gray-800 font-mono text-sm shadow-[0_0_100px_rgba(0,0,0,0.5)] cursor-default"
               onClick={e => e.stopPropagation()}
             >
-                {/* Terminal Header Bar */}
                 <div className="bg-[#1a1a1a] p-4 flex justify-between items-center border-b border-gray-800">
                     <div className="flex gap-2">
                         <div className="w-3 h-3 rounded-full bg-red-500" />
@@ -377,7 +377,6 @@ ${safeContent}
                     {isPublishing && <div className="animate-pulse bg-green-500 w-2 h-4 inline-block ml-2"></div>}
                 </div>
                 
-                {/* Terminal Footer */}
                 {!isPublishing && (
                     <div className="p-6 bg-[#1a1a1a] border-t border-gray-800 text-center">
                         <button 
@@ -394,15 +393,15 @@ ${safeContent}
 
       {showSettings && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[100] backdrop-blur-xl">
-            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md p-10 font-sans border border-gray-100">
-                <h2 className="text-2xl font-bold mb-8 flex items-center gap-3 tracking-tight"><Github /> Repository Identity</h2>
+            <div className="bg-white dark:bg-[#0c0c0c] rounded-[2.5rem] shadow-2xl w-full max-w-md p-10 font-sans border border-gray-100 dark:border-zinc-800">
+                <h2 className="text-2xl font-bold mb-8 flex items-center gap-3 tracking-tight dark:text-white"><Github /> Repository Identity</h2>
                 <div className="space-y-8">
                     <div>
-                        <label className="block text-[10px] font-black text-gray-400 uppercase mb-3 tracking-widest">Personal Access Token</label>
-                        <p className="text-[10px] text-gray-400 mb-2">Required scopes: <code>repo</code></p>
+                        <label className="block text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase mb-3 tracking-widest">Personal Access Token</label>
+                        <p className="text-[10px] text-gray-400 dark:text-zinc-500 mb-2">Required scopes: <code>repo</code></p>
                         <input 
                             type="password" 
-                            className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-5 text-sm focus:ring-1 focus:ring-black outline-none transition-all font-mono"
+                            className="w-full bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-5 text-sm focus:ring-1 focus:ring-black dark:focus:ring-white outline-none transition-all font-mono dark:text-white"
                             placeholder="ghp_..."
                             value={ghConfig.token}
                             onChange={e => setGhConfig(prev => ({...prev, token: e.target.value}))}
@@ -410,13 +409,13 @@ ${safeContent}
                     </div>
                 </div>
                 <div className="flex gap-4 mt-12">
-                    <button onClick={() => setShowSettings(false)} className="flex-1 py-4 text-gray-400 hover:text-black font-bold uppercase text-xs tracking-widest">Discard</button>
+                    <button onClick={() => setShowSettings(false)} className="flex-1 py-4 text-gray-400 hover:text-black dark:hover:text-white font-bold uppercase text-xs tracking-widest">Discard</button>
                     <button onClick={() => { 
                         const cleanToken = ghConfig.token.trim();
                         localStorage.setItem('dan_papers_gh_config', JSON.stringify({...ghConfig, token: cleanToken})); 
                         setGhConfig(prev => ({...prev, token: cleanToken}));
                         setShowSettings(false); 
-                    }} className="flex-1 bg-black text-white rounded-2xl font-bold py-4 shadow-xl shadow-gray-200 uppercase text-xs tracking-widest">Update Keys</button>
+                    }} className="flex-1 bg-black dark:bg-zinc-800 text-white rounded-2xl font-bold py-4 shadow-xl shadow-gray-200 dark:shadow-none uppercase text-xs tracking-widest">Update Keys</button>
                 </div>
             </div>
         </div>

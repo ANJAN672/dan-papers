@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
+        darkMode: 'class',
         theme: {
           extend: {
             fontFamily: {
@@ -29,11 +30,14 @@
         width: 8px;
       }
       ::-webkit-scrollbar-track {
-        background: #f1f1f1;
+        background: transparent;
       }
       ::-webkit-scrollbar-thumb {
         background: #ccc;
         border-radius: 4px;
+      }
+      .dark ::-webkit-scrollbar-thumb {
+        background: #333;
       }
       ::-webkit-scrollbar-thumb:hover {
         background: #999;
@@ -54,7 +58,7 @@
 }
 </script>
 </head>
-  <body class="bg-[#F9F9F9] text-medium-black antialiased">
+  <body class="bg-[#F9F9F9] dark:bg-[#050505] text-medium-black dark:text-gray-100 antialiased transition-colors duration-300">
     <div id="root"></div>
   </body>
 </html>

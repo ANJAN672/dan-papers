@@ -7,7 +7,7 @@ import { GitHubConfig, fetchFileContent, updateFileContent } from '../services/g
 export const parseInlineMarkdown = (text: string) => {
   let processed: React.ReactNode[] = text.split(/(\*\*.*?\*\*)/g).map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i} className="font-bold text-black">{part.slice(2, -2)}</strong>;
+      return <strong key={i} className="font-bold text-black dark:text-white">{part.slice(2, -2)}</strong>;
     }
     return part;
   });
@@ -42,7 +42,7 @@ export const parseInlineMarkdown = (text: string) => {
             href={match[2]} 
             target="_blank" 
             rel="noopener noreferrer" 
-            className="text-medium-black underline decoration-gray-300 hover:decoration-black transition-all"
+            className="text-medium-black dark:text-white underline decoration-gray-300 dark:decoration-zinc-700 hover:decoration-black dark:hover:decoration-white transition-all"
           >
             {match[1]}
           </a>
@@ -89,22 +89,22 @@ export const renderArticleContent = (text: string) => {
         );
 
         elements.push(
-          <div key={`table-${i}`} className="my-10 overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
+          <div key={`table-${i}`} className="my-10 overflow-x-auto border border-gray-200 dark:border-zinc-800 rounded-lg shadow-sm">
             <table className="w-full text-left border-collapse font-sans text-sm min-w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 dark:bg-zinc-900/50">
                 <tr>
                   {headerRow.map((cell, idx) => (
-                    <th key={idx} className={`p-4 border-b border-gray-200 font-bold text-black uppercase tracking-wider text-[11px] whitespace-nowrap`} style={{ textAlign: alignments[idx] as any }}>
+                    <th key={idx} className={`p-4 border-b border-gray-200 dark:border-zinc-800 font-bold text-black dark:text-white uppercase tracking-wider text-[11px] whitespace-nowrap`} style={{ textAlign: alignments[idx] as any }}>
                       {parseInlineMarkdown(cell.trim())}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
                 {bodyRows.map((row, rowIdx) => (
-                  <tr key={rowIdx} className="hover:bg-gray-50/50 transition-colors">
+                  <tr key={rowIdx} className="hover:bg-gray-50/50 dark:hover:bg-zinc-800/30 transition-colors">
                     {row.map((cell, cellIdx) => (
-                      <td key={cellIdx} className={`p-4 text-medium-black leading-relaxed`} style={{ textAlign: alignments[cellIdx] as any }}>
+                      <td key={cellIdx} className={`p-4 text-medium-black dark:text-zinc-300 leading-relaxed`} style={{ textAlign: alignments[cellIdx] as any }}>
                         {parseInlineMarkdown(cell.trim())}
                       </td>
                     ))}
@@ -128,7 +128,7 @@ export const renderArticleContent = (text: string) => {
       i++;
       elements.push(
         <div key={`code-container-${i}`} className="relative my-10 group">
-          <pre className="bg-[#1e1e1e] text-[#d4d4d4] p-8 rounded-2xl overflow-x-auto font-mono text-sm leading-6 border border-gray-800 shadow-xl">
+          <pre className="bg-[#1e1e1e] dark:bg-[#000000] text-[#d4d4d4] p-8 rounded-2xl overflow-x-auto font-mono text-sm leading-6 border border-gray-800 dark:border-zinc-800 shadow-xl">
             <code className="block whitespace-pre">{codeLines.join('\n')}</code>
           </pre>
         </div>
@@ -137,17 +137,17 @@ export const renderArticleContent = (text: string) => {
     }
 
     if (line.startsWith('# ')) {
-      elements.push(<h1 key={i} className="text-3xl md:text-4xl font-bold mt-16 mb-8 font-sans text-medium-black tracking-tight leading-tight border-b border-gray-100 pb-4">{parseInlineMarkdown(line.replace('# ', ''))}</h1>);
+      elements.push(<h1 key={i} className="text-3xl md:text-4xl font-bold mt-16 mb-8 font-sans text-medium-black dark:text-white tracking-tight leading-tight border-b border-gray-100 dark:border-zinc-800 pb-4">{parseInlineMarkdown(line.replace('# ', ''))}</h1>);
     } else if (line.startsWith('## ')) {
-      elements.push(<h2 key={i} className="text-2xl font-bold mt-12 mb-6 font-sans text-medium-black tracking-tight">{parseInlineMarkdown(line.replace('## ', ''))}</h2>);
+      elements.push(<h2 key={i} className="text-2xl font-bold mt-12 mb-6 font-sans text-medium-black dark:text-white tracking-tight">{parseInlineMarkdown(line.replace('## ', ''))}</h2>);
     } else if (line.startsWith('### ')) {
-      elements.push(<h3 key={i} className="text-xl font-bold mt-8 mb-4 font-sans text-medium-black tracking-tight">{parseInlineMarkdown(line.replace('### ', ''))}</h3>);
+      elements.push(<h3 key={i} className="text-xl font-bold mt-8 mb-4 font-sans text-medium-black dark:text-white tracking-tight">{parseInlineMarkdown(line.replace('### ', ''))}</h3>);
     } else if (line.startsWith('* ')) {
-      elements.push(<li key={i} className="ml-6 list-disc mb-4 text-xl leading-relaxed text-medium-black/90 font-serif pl-2">{parseInlineMarkdown(line.replace('* ', ''))}</li>);
+      elements.push(<li key={i} className="ml-6 list-disc mb-4 text-xl leading-relaxed text-medium-black/90 dark:text-zinc-200 font-serif pl-2">{parseInlineMarkdown(line.replace('* ', ''))}</li>);
     } else if (line.startsWith('> ')) {
-      elements.push(<blockquote key={i} className="border-l-4 border-black pl-8 italic my-12 text-2xl text-gray-500 font-serif leading-relaxed py-2">{parseInlineMarkdown(line.replace('> ', ''))}</blockquote>);
+      elements.push(<blockquote key={i} className="border-l-4 border-black dark:border-white pl-8 italic my-12 text-2xl text-gray-500 dark:text-zinc-400 font-serif leading-relaxed py-2">{parseInlineMarkdown(line.replace('> ', ''))}</blockquote>);
     } else if (line.trim().length > 0) {
-      elements.push(<p key={i} className="mb-6 text-xl leading-relaxed text-medium-black/90 font-serif tracking-tight">{parseInlineMarkdown(line)}</p>);
+      elements.push(<p key={i} className="mb-6 text-xl leading-relaxed text-medium-black/90 dark:text-zinc-200 font-serif tracking-tight">{parseInlineMarkdown(line)}</p>);
     } else {
       elements.push(<div key={i} className="h-4" />);
     }
@@ -180,7 +180,7 @@ const ArticlePage: React.FC = () => {
     return (
       <div className="max-w-screen-md mx-auto mt-20 text-center font-sans">
         <h1 className="text-2xl font-bold text-gray-400">Paper not found</h1>
-        <Link to="/" className="text-black underline mt-4 block">Return home</Link>
+        <Link to="/" className="text-black dark:text-white underline mt-4 block">Return home</Link>
       </div>
     );
   }
@@ -250,28 +250,28 @@ const ArticlePage: React.FC = () => {
   return (
     <article className="max-w-screen-md mx-auto mt-12 mb-20 px-4 relative z-[5]">
       {showShareToast && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[200] bg-black text-white px-6 py-3 rounded-full text-xs font-bold font-sans shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4 duration-300">
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[200] bg-black dark:bg-zinc-800 text-white px-6 py-3 rounded-full text-xs font-bold font-sans shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4 duration-300">
           <Check size={14} className="text-green-400" /> LINK COPIED TO CLIPBOARD
         </div>
       )}
 
-      <div className="bg-white px-6 md:px-16 py-12 md:py-20 rounded-[3rem] shadow-sm border border-gray-50 overflow-hidden">
+      <div className="bg-white dark:bg-[#0c0c0c] px-6 md:px-16 py-12 md:py-20 rounded-[3rem] shadow-sm border border-gray-50 dark:border-zinc-800 overflow-hidden transition-colors duration-300">
           <header className="mb-12 relative z-10">
-            <h1 className="text-4xl md:text-6xl font-bold text-medium-black leading-[1.1] mb-8 font-sans tracking-tight pt-8">
+            <h1 className="text-4xl md:text-6xl font-bold text-medium-black dark:text-white leading-[1.1] mb-8 font-sans tracking-tight pt-8">
               {article.title}
             </h1>
-            <p className="text-xl md:text-2xl text-gray-400 font-serif leading-relaxed italic border-l-4 border-black pl-8 py-2">
+            <p className="text-xl md:text-2xl text-gray-400 dark:text-zinc-500 font-serif leading-relaxed italic border-l-4 border-black dark:border-white pl-8 py-2">
               {article.subtitle}
             </p>
           </header>
 
-          <div className="flex items-center justify-between mb-16 border-b border-gray-100 pb-12">
+          <div className="flex items-center justify-between mb-16 border-b border-gray-100 dark:border-zinc-800 pb-12">
             <div className="flex items-center gap-5">
-              <img src={CURRENT_USER.image} alt="Author" className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-md" />
+              <img src={CURRENT_USER.image} alt="Author" className="w-14 h-14 rounded-full object-cover border-2 border-white dark:border-zinc-800 shadow-md" />
               <div className="font-sans">
-                <span className="font-bold text-medium-black block text-base tracking-tight">{article.author}</span>
-                <div className="text-xs text-medium-gray flex items-center gap-3 mt-1">
-                  <span className="bg-gray-100 px-2 py-0.5 rounded uppercase font-bold text-[9px]">{article.date}</span>
+                <span className="font-bold text-medium-black dark:text-white block text-base tracking-tight">{article.author}</span>
+                <div className="text-xs text-medium-gray dark:text-zinc-500 flex items-center gap-3 mt-1">
+                  <span className="bg-gray-100 dark:bg-zinc-800 px-2 py-0.5 rounded uppercase font-bold text-[9px] dark:text-zinc-300">{article.date}</span>
                   <span className="opacity-30">·</span>
                   <span className="font-medium">{article.readTime} min read</span>
                 </div>
@@ -284,17 +284,17 @@ const ArticlePage: React.FC = () => {
                     <Trash2 size={22} />
                 </button>
               )}
-              <button onClick={handleShare} title="Share Link" className="hover:text-black transition-colors p-2">
+              <button onClick={handleShare} title="Share Link" className="hover:text-black dark:hover:text-white transition-colors p-2">
                 <Share size={22} />
               </button>
-              <button onClick={handleEdit} title="Edit Paper" className="hover:text-black transition-colors p-2">
+              <button onClick={handleEdit} title="Edit Paper" className="hover:text-black dark:hover:text-white transition-colors p-2">
                 <MoreHorizontal size={22} />
               </button>
             </div>
           </div>
 
           {article.image && (
-            <div className="mb-16 rounded-3xl overflow-hidden border border-gray-100 shadow-sm">
+            <div className="mb-16 rounded-3xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm">
               <img src={article.image} alt="Cover" className="w-full h-auto max-h-[500px] object-cover" />
             </div>
           )}
@@ -303,9 +303,9 @@ const ArticlePage: React.FC = () => {
             {renderArticleContent(article.content)}
           </div>
 
-          <div className="flex flex-wrap gap-3 mt-16 pt-10 border-t border-gray-100">
+          <div className="flex flex-wrap gap-3 mt-16 pt-10 border-t border-gray-100 dark:border-zinc-800">
             {article.tags.map(tag => (
-              <span key={tag} className="bg-white border border-gray-200 text-gray-400 px-6 py-2 rounded-full text-[10px] font-sans font-bold uppercase tracking-[0.25em] shadow-sm">
+              <span key={tag} className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 text-gray-400 dark:text-zinc-500 px-6 py-2 rounded-full text-[10px] font-sans font-bold uppercase tracking-[0.25em] shadow-sm">
                 {tag}
               </span>
             ))}
@@ -314,17 +314,17 @@ const ArticlePage: React.FC = () => {
 
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-[100] backdrop-blur-xl">
-            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-sm p-12 font-sans border border-gray-100">
+            <div className="bg-white dark:bg-[#0c0c0c] rounded-[2.5rem] shadow-2xl w-full max-w-sm p-12 font-sans border border-gray-100 dark:border-zinc-800">
                 <div className="flex flex-col items-center text-center">
-                    <div className="w-20 h-20 bg-red-50 text-red-500 rounded-3xl flex items-center justify-center mb-8 rotate-3 shadow-inner">
+                    <div className="w-20 h-20 bg-red-50 dark:bg-red-950/30 text-red-500 rounded-3xl flex items-center justify-center mb-8 rotate-3 shadow-inner">
                         <AlertTriangle size={40} />
                     </div>
-                    <h3 className="text-2xl font-bold text-black mb-3 tracking-tight">Revoke Publication?</h3>
-                    <p className="text-sm text-gray-500 mb-10 leading-relaxed">This will permanently remove the research from the global repository. Identity verification required.</p>
+                    <h3 className="text-2xl font-bold text-black dark:text-white mb-3 tracking-tight">Revoke Publication?</h3>
+                    <p className="text-sm text-gray-500 dark:text-zinc-500 mb-10 leading-relaxed">This will permanently remove the research from the global repository. Identity verification required.</p>
                 </div>
                 <input 
                     type="password"
-                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-5 text-sm focus:ring-2 focus:ring-black/5 outline-none mb-8 transition-all font-mono"
+                    className="w-full bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-5 text-sm focus:ring-2 focus:ring-black dark:focus:ring-white/10 outline-none mb-8 transition-all font-mono dark:text-white"
                     placeholder="GPG Token ID"
                     value={deleteToken}
                     onChange={(e) => setDeleteToken(e.target.value)}
@@ -333,7 +333,7 @@ const ArticlePage: React.FC = () => {
                     <button onClick={handleDelete} disabled={isDeleting} className="w-full py-5 bg-red-600 text-white rounded-2xl text-sm font-bold shadow-2xl shadow-red-200 hover:bg-red-700 transition-all">
                         {isDeleting ? 'Processing...' : 'Verify & Delete'}
                     </button>
-                    <button onClick={() => setShowDeleteModal(false)} className="w-full py-5 text-gray-400 hover:text-black text-sm font-bold">Cancel</button>
+                    <button onClick={() => setShowDeleteModal(false)} className="w-full py-5 text-gray-400 hover:text-black dark:hover:text-white text-sm font-bold">Cancel</button>
                 </div>
             </div>
         </div>
