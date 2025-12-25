@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Github, Settings, Loader2, Paperclip, Eye, Edit3 } from 'lucide-react';
 import { CURRENT_USER, ARTICLES } from '../constants';
 import { GitHubConfig, fetchFileContent, updateFileContent } from '../services/githubService';
@@ -12,7 +12,12 @@ pdfjs.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@4.10.38/build/p
 
 const WritePage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Data passed from Edit button in ArticlePage
+  const editArticle = location.state?.editArticle;
+
   const [title, setTitle] = useState('');
   const [subtitle, setSubtitle] = useState('');
   const [content, setContent] = useState('');
@@ -36,6 +41,18 @@ const WritePage: React.FC = () => {
     ...FIXED_CONFIG
   });
 
+  // Pre-load data if in Edit Mode
+  useEffect(() => {
+    if (editArticle) {
+      setTitle(editArticle.title);
+      setSubtitle(editArticle.subtitle);
+      setTags(editArticle.tags.join(', '));
+      setContent(editArticle.content);
+      // Optional: Auto-enable preview if we are editing
+      setIsPreview(true);
+    }
+  }, [editArticle]);
+
   useEffect(() => {
     const stored = localStorage.getItem('dan_papers_gh_config');
     if (stored) {
@@ -48,14 +65,12 @@ const WritePage: React.FC = () => {
     setTerminalLogs(prev => [...prev, msg]);
   };
 
-  // Zero-API Local Markdown Parser for metadata
   const parseMdLocally = (text: string) => {
     let extractedTitle = '';
     let extractedSubtitle = '';
     let extractedTags = '';
     let cleanContent = text;
 
-    // Detect Frontmatter
     if (text.startsWith('---')) {
       const parts = text.split('---');
       if (parts.length >= 3) {
@@ -71,7 +86,6 @@ const WritePage: React.FC = () => {
       }
     }
 
-    // Try to find first H1 if title is missing
     if (!extractedTitle) {
       const h1Match = cleanContent.match(/^#\s+(.*)$/m);
       if (h1Match) extractedTitle = h1Match[1].trim();
@@ -109,14 +123,12 @@ const WritePage: React.FC = () => {
         throw new Error("Format not supported. Please use .md, .pdf, or .docx");
       }
 
-      // Zero-API Processing
       const parsed = parseMdLocally(rawText);
       if (parsed.title) setTitle(parsed.title);
       if (parsed.subtitle) setSubtitle(parsed.subtitle);
       if (parsed.tags) setTags(parsed.tags);
       setContent(parsed.content);
       
-      // Auto-preview to show the user their document looks perfect
       setIsPreview(true);
     } catch (err: any) {
       alert("Error: " + err.message);
@@ -133,41 +145,76 @@ const WritePage: React.FC = () => {
     setShowTerminal(true);
     setTerminalLogs([]);
     setIsPublishing(true);
-    addLog(`$ git commit -m "Publish: ${title || 'Research Paper'}"`);
+    
+    const isEdit = !!editArticle;
+    addLog(`$ git commit -m "${isEdit ? 'Update' : 'Publish'}: ${title || 'Research Paper'}"`);
 
     try {
       const { content: currentFileContent, sha } = await fetchFileContent(config);
-      const marker = "export const ARTICLES: Article[] = [";
-      const insertIndex = currentFileContent.indexOf(marker);
       
-      const id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'paper-' + Date.now();
+      const targetId = isEdit ? editArticle.id : title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'paper-' + Date.now();
       const readTime = Math.max(1, Math.ceil(content.split(/\s+/).length / 200));
       const safeContent = content.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
       const tagArray = tags.split(',').map(t => t.trim()).filter(t => t.length > 0);
 
-      const newArticle = `
+      const articleObject = `
   {
-    id: "${id}",
+    id: "${targetId}",
     title: "${title || 'Untitled'}",
     subtitle: "${subtitle || ''}",
-    author: "${CURRENT_USER.name}",
-    date: "${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}",
+    author: "${editArticle?.author || CURRENT_USER.name}",
+    date: "${editArticle?.date || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}",
     readTime: ${readTime},
     tags: ${JSON.stringify(tagArray.length ? tagArray : ['Research'])},
-    image: "https://picsum.photos/800/400?grayscale",
+    image: "${editArticle?.image || 'https://picsum.photos/800/400?grayscale'}",
     content: \`
 ${safeContent}
     \`
   },`;
 
-      const newFileContent = currentFileContent.slice(0, insertIndex + marker.length) + "\n" + newArticle + currentFileContent.slice(insertIndex + marker.length);
-      await updateFileContent(config, newFileContent, sha, { message: `Publish: ${title}` });
+      let newFileContent = "";
+
+      if (isEdit) {
+        addLog(`> Identifying existing entry for ID: ${targetId}...`);
+        const searchStr = `id: "${targetId}"`;
+        const idIndex = currentFileContent.indexOf(searchStr);
+        if (idIndex === -1) throw new Error("Could not locate existing article in source.");
+
+        let startIndex = idIndex;
+        while (startIndex >= 0 && currentFileContent[startIndex] !== '{') startIndex--;
+        
+        let endIndex = idIndex;
+        let braceCount = 0;
+        while (endIndex < currentFileContent.length) {
+            if (currentFileContent[endIndex] === '{') braceCount++;
+            if (currentFileContent[endIndex] === '}') braceCount--;
+            if (braceCount === 0 && currentFileContent[endIndex] === '}') break;
+            endIndex++;
+        }
+        
+        // Remove old, insert new at same location
+        newFileContent = currentFileContent.slice(0, startIndex) + articleObject.trim() + currentFileContent.slice(endIndex + 1);
+      } else {
+        const marker = "export const ARTICLES: Article[] = [";
+        const insertIndex = currentFileContent.indexOf(marker);
+        newFileContent = currentFileContent.slice(0, insertIndex + marker.length) + "\n" + articleObject + currentFileContent.slice(insertIndex + marker.length);
+      }
+
+      await updateFileContent(config, newFileContent, sha, { message: `${isEdit ? 'Update' : 'Publish'}: ${title}` });
       
       addLog(`$ git push origin main --verified`);
-      addLog(`$ Success. Paper indexed.`);
+      addLog(`$ Success. Paper index updated.`);
       
-      ARTICLES.unshift({ id, title, subtitle, author: CURRENT_USER.name, date: 'Now', readTime, tags: tagArray, content, image: "https://picsum.photos/800/400?grayscale" });
-      setTimeout(() => navigate('/'), 1500);
+      // Local sync
+      const localArticle = { id: targetId, title, subtitle, author: editArticle?.author || CURRENT_USER.name, date: editArticle?.date || 'Now', readTime, tags: tagArray, content, image: editArticle?.image || "https://picsum.photos/800/400?grayscale" };
+      if (isEdit) {
+        const idx = ARTICLES.findIndex(a => a.id === targetId);
+        if (idx > -1) ARTICLES[idx] = localArticle;
+      } else {
+        ARTICLES.unshift(localArticle);
+      }
+      
+      setTimeout(() => navigate(isEdit ? `/article/${targetId}` : '/'), 1500);
     } catch (error: any) {
       addLog(`Error: ${error.message}`);
     } finally {
@@ -186,14 +233,14 @@ ${safeContent}
       )}
 
       <div className="mb-16 flex justify-between items-center border-b border-gray-100 pb-6">
-        <Link to="/" className="text-gray-400 hover:text-black flex items-center gap-2 text-sm font-bold tracking-tight">
-          <ArrowLeft size={16} /> DASHBOARD
+        <Link to={editArticle ? `/article/${editArticle.id}` : "/"} className="text-gray-400 hover:text-black flex items-center gap-2 text-sm font-bold tracking-tight">
+          <ArrowLeft size={16} /> {editArticle ? 'CANCEL EDIT' : 'DASHBOARD'}
         </Link>
         
         <div className="flex gap-8 items-center">
           <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".pdf,.doc,.docx,.md" />
           <button onClick={() => fileInputRef.current?.click()} className="text-gray-400 hover:text-black flex items-center gap-2 text-xs font-bold uppercase tracking-widest">
-            <Paperclip size={14} /> <span>Upload Paper</span>
+            <Paperclip size={14} /> <span>{editArticle ? 'Replace with doc' : 'Upload Paper'}</span>
           </button>
           
           <div className="h-6 w-px bg-gray-200" />
@@ -258,7 +305,7 @@ ${safeContent}
               className="bg-black text-white font-sans font-bold px-10 py-5 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.3)] hover:scale-105 active:scale-95 disabled:opacity-20 transition-all flex items-center gap-4 group"
           >
               {isPublishing ? <Loader2 size={24} className="animate-spin" /> : <Github size={24} className="group-hover:rotate-12 transition-transform" />}
-              <span className="text-sm uppercase tracking-widest">{isPublishing ? 'Pushing Paper...' : 'Verify & Publish'}</span>
+              <span className="text-sm uppercase tracking-widest">{isPublishing ? 'Pushing Paper...' : (editArticle ? 'Update Publication' : 'Verify & Publish')}</span>
           </button>
       </div>
 
@@ -266,6 +313,7 @@ ${safeContent}
         <div className="fixed inset-0 bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 z-[100]">
             <div className="w-full max-w-2xl bg-[#0a0a0a] rounded-3xl overflow-hidden border border-gray-800 font-mono text-sm shadow-[0_0_100px_rgba(0,0,0,0.5)]">
                 <div className="p-10 h-[350px] overflow-y-auto text-green-500">
+                    <div className="mb-4 text-xs opacity-50 uppercase tracking-widest">Repository Log Stream</div>
                     {terminalLogs.map((log, i) => <div key={i} className="mb-3 flex gap-4"><span className="opacity-30">[{i}]</span> <span>{log}</span></div>)}
                     {isPublishing && <div className="animate-pulse bg-green-500 w-2 h-4 inline-block ml-2"></div>}
                 </div>

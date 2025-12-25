@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ARTICLES, CURRENT_USER } from '../constants';
-import { Share, MoreHorizontal, Sparkles, Trash2, AlertTriangle } from 'lucide-react';
+import { Share, MoreHorizontal, Sparkles, Trash2, AlertTriangle, Check } from 'lucide-react';
 import { summarizeArticle } from '../services/geminiService';
 import { GitHubConfig, fetchFileContent, updateFileContent } from '../services/githubService';
 
 // Helper to parse inline markdown (Bold, Italic, Links)
 export const parseInlineMarkdown = (text: string) => {
-  // Bold: **text**
   let processed: React.ReactNode[] = text.split(/(\*\*.*?\*\*)/g).map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
       return <strong key={i} className="font-bold text-black">{part.slice(2, -2)}</strong>;
@@ -15,7 +14,6 @@ export const parseInlineMarkdown = (text: string) => {
     return part;
   });
 
-  // Italic: *text*
   const italicParts: React.ReactNode[] = [];
   processed.forEach((part) => {
     if (typeof part === 'string') {
@@ -31,7 +29,6 @@ export const parseInlineMarkdown = (text: string) => {
     }
   });
 
-  // Links: [text](url)
   const linkedParts: React.ReactNode[] = [];
   italicParts.forEach((part) => {
     if (typeof part === 'string') {
@@ -64,7 +61,6 @@ export const parseInlineMarkdown = (text: string) => {
   return linkedParts;
 };
 
-// Advanced Markdown Parser with High-Fidelity Table & Code Support
 export const renderArticleContent = (text: string) => {
   const lines = text.split('\n');
   const elements: React.ReactNode[] = [];
@@ -73,7 +69,6 @@ export const renderArticleContent = (text: string) => {
   while (i < lines.length) {
     const line = lines[i];
 
-    // 1. Enhanced Table Handling (GFM Compatible)
     if (line.trim().startsWith('|')) {
       const tableLines: string[] = [];
       while (i < lines.length && lines[i].trim().startsWith('|')) {
@@ -82,9 +77,7 @@ export const renderArticleContent = (text: string) => {
       }
       
       if (tableLines.length >= 2) {
-        // Extract headers
         const headerRow = tableLines[0].split('|').filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
-        // Extract alignment (line 2: | :--- | :---: | ---: |)
         const alignmentRow = tableLines[1].split('|').filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
         const alignments = alignmentRow.map(cell => {
           const c = cell.trim();
@@ -93,7 +86,6 @@ export const renderArticleContent = (text: string) => {
           return 'left';
         });
 
-        // Extract body
         const bodyRows = tableLines.slice(2).map(row => 
           row.split('|').filter((_, idx, arr) => idx > 0 && idx < arr.length - 1)
         );
@@ -128,7 +120,6 @@ export const renderArticleContent = (text: string) => {
       }
     }
 
-    // 2. Code Block / Architecture / Charts
     if (line.trim().startsWith('```')) {
       const codeLines: string[] = [];
       i++; 
@@ -142,15 +133,11 @@ export const renderArticleContent = (text: string) => {
           <pre className="bg-[#1e1e1e] text-[#d4d4d4] p-8 rounded-2xl overflow-x-auto font-mono text-sm leading-6 border border-gray-800 shadow-xl">
             <code className="block whitespace-pre">{codeLines.join('\n')}</code>
           </pre>
-          <div className="absolute top-4 right-4 text-[10px] text-gray-500 font-mono uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
-            Source / Arch / Code
-          </div>
         </div>
       );
       continue;
     }
 
-    // 3. Typography
     if (line.startsWith('# ')) {
       elements.push(<h1 key={i} className="text-3xl md:text-4xl font-bold mt-16 mb-8 font-sans text-medium-black tracking-tight leading-tight border-b border-gray-100 pb-4">{parseInlineMarkdown(line.replace('# ', ''))}</h1>);
     } else if (line.startsWith('## ')) {
@@ -183,6 +170,7 @@ const ArticlePage: React.FC = () => {
   const [deleteToken, setDeleteToken] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [ghConfig, setGhConfig] = useState<GitHubConfig | null>(null);
+  const [showShareToast, setShowShareToast] = useState(false);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -200,6 +188,33 @@ const ArticlePage: React.FC = () => {
       </div>
     );
   }
+
+  const handleShare = async () => {
+    const url = window.location.href;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: article.title,
+          text: article.subtitle,
+          url: url,
+        });
+      } catch (err) {
+        console.error('Error sharing:', err);
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(url);
+        setShowShareToast(true);
+        setTimeout(() => setShowShareToast(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy link:', err);
+      }
+    }
+  };
+
+  const handleEdit = () => {
+    navigate('/write', { state: { editArticle: article } });
+  };
 
   const handleGenerateSummary = async () => {
     setLoadingSummary(true);
@@ -244,10 +259,16 @@ const ArticlePage: React.FC = () => {
   };
 
   return (
-    <article className="max-w-screen-md mx-auto mt-8 mb-20 px-4">
-      <div className="bg-white px-6 md:px-16 py-12 md:py-20 rounded-[3rem] shadow-sm border border-gray-50">
-          <header className="mb-16">
-            <h1 className="text-4xl md:text-6xl font-bold text-medium-black leading-[1.1] mb-8 font-sans tracking-tight">
+    <article className="max-w-screen-md mx-auto mt-4 mb-20 px-4 relative">
+      {showShareToast && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[200] bg-black text-white px-6 py-3 rounded-full text-xs font-bold font-sans shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4 duration-300">
+          <Check size={14} className="text-green-400" /> LINK COPIED TO CLIPBOARD
+        </div>
+      )}
+
+      <div className="bg-white px-6 md:px-16 py-12 md:py-20 rounded-[3rem] shadow-sm border border-gray-50 overflow-hidden">
+          <header className="mb-16 relative z-10">
+            <h1 className="text-4xl md:text-6xl font-bold text-medium-black leading-[1.1] mb-8 font-sans tracking-tight pt-4">
               {article.title}
             </h1>
             <p className="text-xl md:text-2xl text-gray-400 font-serif leading-relaxed italic border-l-4 border-black pl-8 py-2">
@@ -268,14 +289,18 @@ const ArticlePage: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-8 text-gray-400">
+            <div className="flex items-center gap-4 md:gap-8 text-gray-400">
               {ghConfig && (
-                <button onClick={() => setShowDeleteModal(true)} className="hover:text-red-500 transition-colors">
+                <button onClick={() => setShowDeleteModal(true)} title="Delete Paper" className="hover:text-red-500 transition-colors p-2">
                     <Trash2 size={22} />
                 </button>
               )}
-              <button className="hover:text-black transition-colors"><Share size={22} /></button>
-              <button className="hover:text-black transition-colors"><MoreHorizontal size={22} /></button>
+              <button onClick={handleShare} title="Share Link" className="hover:text-black transition-colors p-2">
+                <Share size={22} />
+              </button>
+              <button onClick={handleEdit} title="Edit Paper" className="hover:text-black transition-colors p-2">
+                <MoreHorizontal size={22} />
+              </button>
             </div>
           </div>
 
