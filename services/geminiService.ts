@@ -6,7 +6,6 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const summarizeArticle = async (text: string): Promise<string> => {
   try {
-    // Calling generateContent with the specific model name and contents.
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Please provide a concise, academic summary (approx. 3-4 sentences) of the following research paper content. Focus on the core hypothesis and conclusion.\n\n${text}`,
@@ -16,7 +15,6 @@ export const summarizeArticle = async (text: string): Promise<string> => {
       }
     });
 
-    // Accessing the .text property directly to get the result.
     return response.text || "No summary generated.";
   } catch (error) {
     console.error("Error summarizing article:", error);
@@ -26,15 +24,19 @@ export const summarizeArticle = async (text: string): Promise<string> => {
 
 export const structureArticle = async (rawText: string) => {
   try {
-    // Professional research paper editor logic using gemini-3-flash-preview for structured JSON output.
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `You are a professional research paper editor. Convert the following raw text extracted from a document into a beautifully structured Markdown blog post for "Dan Papers".
-      Identify the title, a 1-sentence subtitle, relevant research tags, and the main content.
-      Format the content using # for main headings, ## for subheadings, and > for blockquotes where appropriate.
-      Clean up any extraction artifacts like broken lines or headers/footers.
+      contents: `You are a professional research paper editor. Convert the following raw text into a beautifully structured Markdown blog post for "Dan Papers".
       
-      RAW TEXT:
+      CRITICAL INSTRUCTIONS:
+      1. Identify and preserve all TABLES. Format them exactly in Markdown | Header | format.
+      2. If you find tabular data described in text, convert it into a Markdown table.
+      3. Identify any architecture descriptions or charts and format them inside fenced code blocks (using \`\`\`).
+      4. Create a compelling Title, a 1-sentence Abstract (Subtitle), and 3-5 relevant research Tags.
+      5. Clean up extraction artifacts (broken lines, weird characters).
+      6. Use academic headers (#, ##).
+
+      RAW TEXT TO PROCESS:
       ${rawText}`,
       config: {
         responseMimeType: "application/json",
@@ -51,7 +53,6 @@ export const structureArticle = async (rawText: string) => {
       }
     });
 
-    // Extracting generated text directly as a string.
     return JSON.parse(response.text || '{}');
   } catch (error) {
     console.error("Error structuring article:", error);

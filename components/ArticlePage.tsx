@@ -1,24 +1,22 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ARTICLES, CURRENT_USER } from '../constants';
-import { Share, MoreHorizontal, Sparkles, Trash2, AlertTriangle, Terminal } from 'lucide-react';
+import { Share, MoreHorizontal, Sparkles, Trash2, AlertTriangle } from 'lucide-react';
 import { summarizeArticle } from '../services/geminiService';
-import { GitHubConfig, fetchFileContent, updateFileContent, getGitHubUser } from '../services/githubService';
+import { GitHubConfig, fetchFileContent, updateFileContent } from '../services/githubService';
 
 // Helper to parse inline markdown (Bold, Italic, Links)
 export const parseInlineMarkdown = (text: string) => {
   // Bold: **text**
-  let processed = text.split(/(\*\*.*?\*\*)/g).map((part, i) => {
+  let processed: React.ReactNode[] = text.split(/(\*\*.*?\*\*)/g).map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
       return <strong key={i} className="font-bold text-black">{part.slice(2, -2)}</strong>;
     }
     return part;
   });
 
-  // Italic: *text* (avoiding conflicts with already processed parts)
-  // Fix: Replaced JSX.Element with React.ReactNode to resolve namespace issues.
-  const finalParts: React.ReactNode[] = [];
+  // Italic: *text*
+  const italicParts: React.ReactNode[] = [];
   processed.forEach((part) => {
     if (typeof part === 'string') {
       const subParts = part.split(/(\*.*?\*)/g).map((sub, j) => {
@@ -27,19 +25,17 @@ export const parseInlineMarkdown = (text: string) => {
         }
         return sub;
       });
-      finalParts.push(...subParts);
+      italicParts.push(...subParts);
     } else {
-      finalParts.push(part);
+      italicParts.push(part);
     }
   });
 
   // Links: [text](url)
-  // Fix: Replaced JSX.Element with React.ReactNode to resolve namespace issues.
   const linkedParts: React.ReactNode[] = [];
-  finalParts.forEach((part) => {
+  italicParts.forEach((part) => {
     if (typeof part === 'string') {
       const linkRegex = /\[(.*?)\]\((.*?)\)/g;
-      // Fix: Replaced JSX.Element with React.ReactNode to resolve namespace issues.
       const subParts: React.ReactNode[] = [];
       let lastIndex = 0;
       let match;
@@ -68,31 +64,113 @@ export const parseInlineMarkdown = (text: string) => {
   return linkedParts;
 };
 
+// Advanced Markdown Parser with High-Fidelity Table & Code Support
 export const renderArticleContent = (text: string) => {
   const lines = text.split('\n');
-  return lines.map((line, index) => {
+  const elements: React.ReactNode[] = [];
+  
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // 1. Enhanced Table Handling (GFM Compatible)
+    if (line.trim().startsWith('|')) {
+      const tableLines: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        tableLines.push(lines[i].trim());
+        i++;
+      }
+      
+      if (tableLines.length >= 2) {
+        // Extract headers
+        const headerRow = tableLines[0].split('|').filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
+        // Extract alignment (line 2: | :--- | :---: | ---: |)
+        const alignmentRow = tableLines[1].split('|').filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
+        const alignments = alignmentRow.map(cell => {
+          const c = cell.trim();
+          if (c.startsWith(':') && c.endsWith(':')) return 'center';
+          if (c.endsWith(':')) return 'right';
+          return 'left';
+        });
+
+        // Extract body
+        const bodyRows = tableLines.slice(2).map(row => 
+          row.split('|').filter((_, idx, arr) => idx > 0 && idx < arr.length - 1)
+        );
+
+        elements.push(
+          <div key={`table-${i}`} className="my-10 overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
+            <table className="w-full text-left border-collapse font-sans text-sm min-w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  {headerRow.map((cell, idx) => (
+                    <th key={idx} className={`p-4 border-b border-gray-200 font-bold text-black uppercase tracking-wider text-[11px] whitespace-nowrap`} style={{ textAlign: alignments[idx] as any }}>
+                      {parseInlineMarkdown(cell.trim())}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {bodyRows.map((row, rowIdx) => (
+                  <tr key={rowIdx} className="hover:bg-gray-50/50 transition-colors">
+                    {row.map((cell, cellIdx) => (
+                      <td key={cellIdx} className={`p-4 text-medium-black leading-relaxed`} style={{ textAlign: alignments[cellIdx] as any }}>
+                        {parseInlineMarkdown(cell.trim())}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+        continue;
+      }
+    }
+
+    // 2. Code Block / Architecture / Charts
+    if (line.trim().startsWith('```')) {
+      const codeLines: string[] = [];
+      i++; 
+      while (i < lines.length && !lines[i].trim().startsWith('```')) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++;
+      elements.push(
+        <div key={`code-container-${i}`} className="relative my-10 group">
+          <pre className="bg-[#1e1e1e] text-[#d4d4d4] p-8 rounded-2xl overflow-x-auto font-mono text-sm leading-6 border border-gray-800 shadow-xl">
+            <code className="block whitespace-pre">{codeLines.join('\n')}</code>
+          </pre>
+          <div className="absolute top-4 right-4 text-[10px] text-gray-500 font-mono uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
+            Source / Arch / Code
+          </div>
+        </div>
+      );
+      continue;
+    }
+
+    // 3. Typography
     if (line.startsWith('# ')) {
-      return <h1 key={index} className="text-3xl font-bold mt-10 mb-6 font-sans text-medium-black tracking-tight">{parseInlineMarkdown(line.replace('# ', ''))}</h1>;
+      elements.push(<h1 key={i} className="text-3xl md:text-4xl font-bold mt-16 mb-8 font-sans text-medium-black tracking-tight leading-tight border-b border-gray-100 pb-4">{parseInlineMarkdown(line.replace('# ', ''))}</h1>);
+    } else if (line.startsWith('## ')) {
+      elements.push(<h2 key={i} className="text-2xl font-bold mt-12 mb-6 font-sans text-medium-black tracking-tight">{parseInlineMarkdown(line.replace('## ', ''))}</h2>);
+    } else if (line.startsWith('### ')) {
+      elements.push(<h3 key={i} className="text-xl font-bold mt-8 mb-4 font-sans text-medium-black tracking-tight">{parseInlineMarkdown(line.replace('### ', ''))}</h3>);
+    } else if (line.startsWith('* ')) {
+      elements.push(<li key={i} className="ml-6 list-disc mb-4 text-xl leading-relaxed text-medium-black/90 font-serif pl-2">{parseInlineMarkdown(line.replace('* ', ''))}</li>);
+    } else if (line.startsWith('> ')) {
+      elements.push(<blockquote key={i} className="border-l-4 border-black pl-8 italic my-12 text-2xl text-gray-500 font-serif leading-relaxed py-2">{parseInlineMarkdown(line.replace('> ', ''))}</blockquote>);
+    } else if (line.trim().length > 0) {
+      elements.push(<p key={i} className="mb-6 text-xl leading-relaxed text-medium-black/90 font-serif tracking-tight">{parseInlineMarkdown(line)}</p>);
+    } else {
+      elements.push(<div key={i} className="h-4" />);
     }
-    if (line.startsWith('## ')) {
-      return <h2 key={index} className="text-2xl font-bold mt-8 mb-4 font-sans text-medium-black tracking-tight">{parseInlineMarkdown(line.replace('## ', ''))}</h2>;
-    }
-    if (line.startsWith('### ')) {
-      return <h3 key={index} className="text-xl font-bold mt-6 mb-3 font-sans text-medium-black tracking-tight">{parseInlineMarkdown(line.replace('### ', ''))}</h3>;
-    }
-    if (line.startsWith('* ')) {
-      return <li key={index} className="ml-6 list-disc mb-3 text-xl leading-8 text-medium-black/90 font-serif">{parseInlineMarkdown(line.replace('* ', ''))}</li>;
-    }
-    if (line.startsWith('> ')) {
-      return <blockquote key={index} className="border-l-4 border-gray-200 pl-6 italic my-8 text-xl text-gray-500 font-serif">{parseInlineMarkdown(line.replace('> ', ''))}</blockquote>;
-    }
-    if (line.startsWith('```')) {
-      return null;
-    }
-    if (line.trim().length === 0) return <div key={index} className="h-4" />;
     
-    return <p key={index} className="mb-6 text-xl leading-8 text-medium-black/90 font-serif tracking-tight">{parseInlineMarkdown(line)}</p>;
-  });
+    i++;
+  }
+  
+  return elements;
 };
 
 const ArticlePage: React.FC = () => {
@@ -101,15 +179,9 @@ const ArticlePage: React.FC = () => {
   const article = ARTICLES.find(a => a.id === id);
   const [summary, setSummary] = useState<string | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
-
-  // Deletion State
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteToken, setDeleteToken] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteStatus, setDeleteStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const [statusMessage, setStatusMessage] = useState('');
-  const [showTerminal, setShowTerminal] = useState(false);
-  const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
   const [ghConfig, setGhConfig] = useState<GitHubConfig | null>(null);
 
   useEffect(() => {
@@ -122,16 +194,12 @@ const ArticlePage: React.FC = () => {
 
   if (!article) {
     return (
-      <div className="max-w-screen-md mx-auto mt-20 text-center font-sans text-gray-400">
-        <h1 className="text-2xl font-bold">Paper not found</h1>
+      <div className="max-w-screen-md mx-auto mt-20 text-center font-sans">
+        <h1 className="text-2xl font-bold text-gray-400">Paper not found</h1>
         <Link to="/" className="text-black underline mt-4 block">Return home</Link>
       </div>
     );
   }
-
-  const addLog = (msg: string) => {
-    setTerminalLogs(prev => [...prev, msg]);
-  };
 
   const handleGenerateSummary = async () => {
     setLoadingSummary(true);
@@ -141,160 +209,103 @@ const ArticlePage: React.FC = () => {
   };
 
   const handleDelete = async () => {
-    if (!ghConfig || !deleteToken) {
-        setStatusMessage("Missing configuration or token.");
-        return;
-    }
-
-    setShowDeleteModal(false);
-    setShowTerminal(true);
+    if (!ghConfig || !deleteToken) return;
     setIsDeleting(true);
-    setTerminalLogs([]);
-    setDeleteStatus('idle');
-
-    addLog(`$ Authenticating identity with GPG Token ID...`);
-    await new Promise(r => setTimeout(r, 800));
-
     try {
         const configWithToken = { ...ghConfig, token: deleteToken };
-        const user = await getGitHubUser(deleteToken);
-        const username = user.login.toLowerCase();
-        const isAdmin = username === 'somdipto';
-        
-        addLog(`> Authenticated as: ${user.login} (${isAdmin ? 'ADMIN' : 'USER'})`);
-        await new Promise(r => setTimeout(r, 500));
-
-        const authorName = article.author.toLowerCase();
-        const isSiteOwnerArticle = authorName === 'dan' || authorName === 'somdipto';
-        const isOwner = authorName === (user.name || '').toLowerCase() || authorName === username;
-
-        if (isSiteOwnerArticle && !isAdmin) {
-             throw new Error("PERMISSION DENIED: You cannot delete the owner's papers.");
-        }
-
-        if (!isAdmin && !isOwner) {
-             throw new Error(`PERMISSION DENIED: You are not the author of this paper.`);
-        }
-
-        addLog(`$ git fetch origin ${configWithToken.branch || 'main'}`);
         const { content: fileContent, sha } = await fetchFileContent(configWithToken);
-        addLog(`> Reading constants.ts... OK`);
-        
         const searchStr = `id: "${article.id}"`;
         const idIndex = fileContent.indexOf(searchStr);
-        if (idIndex === -1) throw new Error(`Article ID "${article.id}" not found.`);
+        if (idIndex === -1) throw new Error("ID not found");
 
-        let startIndex = -1;
-        for (let i = idIndex; i >= 0; i--) {
-            if (fileContent[i] === '{') {
-                startIndex = i;
-                break;
-            }
-        }
-
-        let endIndex = -1;
-        let balance = 0;
-        for (let i = startIndex; i < fileContent.length; i++) {
-            if (fileContent[i] === '{') balance++;
-            if (fileContent[i] === '}') balance--;
-            if (balance === 0) {
-                endIndex = i;
-                break;
-            }
-        }
-
-        let removeEnd = endIndex + 1;
-        while (removeEnd < fileContent.length && (fileContent[removeEnd] === ',' || fileContent[removeEnd] === ' ' || fileContent[removeEnd] === '\n')) {
-             if (fileContent[removeEnd] === ',') {
-                 removeEnd++;
-                 break;
-             }
-             removeEnd++;
-        }
-
-        const newContent = fileContent.slice(0, startIndex) + fileContent.slice(removeEnd);
-        const commitMsg = `Delete: ${article.title}`;
+        let startIndex = idIndex;
+        while (startIndex >= 0 && fileContent[startIndex] !== '{') startIndex--;
         
-        await updateFileContent(configWithToken, newContent, sha, { message: commitMsg });
+        let endIndex = idIndex;
+        let braceCount = 0;
+        while (endIndex < fileContent.length) {
+            if (fileContent[endIndex] === '{') braceCount++;
+            if (fileContent[endIndex] === '}') braceCount--;
+            if (braceCount === 0 && fileContent[endIndex] === '}') break;
+            endIndex++;
+        }
 
-        addLog(`> Success.`);
-        setDeleteStatus('success');
-
-        const localIndex = ARTICLES.findIndex(a => a.id === article.id);
-        if (localIndex > -1) ARTICLES.splice(localIndex, 1);
-
-        setTimeout(() => navigate('/'), 1500);
-    } catch (error: any) {
-        addLog(`FATAL: ${error.message}`);
-        setDeleteStatus('error');
+        const newContent = fileContent.slice(0, startIndex) + fileContent.slice(endIndex + 2);
+        await updateFileContent(configWithToken, newContent, sha, { message: `Delete: ${article.title}` });
+        const idx = ARTICLES.findIndex(a => a.id === article.id);
+        if (idx > -1) ARTICLES.splice(idx, 1);
+        navigate('/');
+    } catch (e: any) {
+        alert("Error: " + e.message);
     } finally {
         setIsDeleting(false);
+        setShowDeleteModal(false);
     }
   };
 
   return (
-    <article className="max-w-screen-md mx-auto mt-8 mb-20">
-      <div className="bg-white px-6 md:px-12 py-12 rounded-2xl shadow-sm border border-gray-200/50">
-          <h1 className="text-3xl md:text-5xl font-bold text-medium-black leading-tight mb-4 font-sans tracking-tight">
-            {article.title}
-          </h1>
-          <h2 className="text-xl md:text-2xl text-medium-gray font-serif mb-8 leading-snug">
-            {article.subtitle}
-          </h2>
+    <article className="max-w-screen-md mx-auto mt-8 mb-20 px-4">
+      <div className="bg-white px-6 md:px-16 py-12 md:py-20 rounded-[3rem] shadow-sm border border-gray-50">
+          <header className="mb-16">
+            <h1 className="text-4xl md:text-6xl font-bold text-medium-black leading-[1.1] mb-8 font-sans tracking-tight">
+              {article.title}
+            </h1>
+            <p className="text-xl md:text-2xl text-gray-400 font-serif leading-relaxed italic border-l-4 border-black pl-8 py-2">
+              {article.subtitle}
+            </p>
+          </header>
 
-          <div className="flex items-center justify-between mb-12 border-b border-gray-100 pb-8">
-            <div className="flex items-center gap-4">
-              <img src={CURRENT_USER.image} alt="Author" className="w-12 h-12 rounded-full object-cover border border-gray-100" />
+          <div className="flex items-center justify-between mb-20 border-b border-gray-100 pb-12">
+            <div className="flex items-center gap-5">
+              <img src={CURRENT_USER.image} alt="Author" className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-md" />
               <div className="font-sans">
-                <span className="font-medium text-medium-black block">{article.author}</span>
-                <div className="text-sm text-medium-gray flex items-center gap-2">
-                  <span>{article.readTime} min read</span>
-                  <span>·</span>
-                  <span>{article.date}</span>
+                <span className="font-bold text-medium-black block text-base tracking-tight">{article.author}</span>
+                <div className="text-xs text-medium-gray flex items-center gap-3 mt-1">
+                  <span className="bg-gray-100 px-2 py-0.5 rounded uppercase font-bold text-[9px]">{article.date}</span>
+                  <span className="opacity-30">·</span>
+                  <span className="font-medium">{article.readTime} min read</span>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-4 text-gray-400">
+            <div className="flex items-center gap-8 text-gray-400">
               {ghConfig && (
                 <button onClick={() => setShowDeleteModal(true)} className="hover:text-red-500 transition-colors">
-                    <Trash2 size={20} />
+                    <Trash2 size={22} />
                 </button>
               )}
-              <button className="hover:text-black transition-colors"><Share size={20} /></button>
-              <button className="hover:text-black transition-colors"><MoreHorizontal size={20} /></button>
+              <button className="hover:text-black transition-colors"><Share size={22} /></button>
+              <button className="hover:text-black transition-colors"><MoreHorizontal size={22} /></button>
             </div>
           </div>
 
-          {article.image && (
-            <figure className="mb-12">
-              <img src={article.image} alt={article.title} className="w-full h-auto object-cover max-h-[500px] rounded-xl grayscale" />
-            </figure>
-          )}
-
-          <div className="article-content">
+          <div className="article-body">
             {renderArticleContent(article.content)}
           </div>
 
-          <div className="my-12 p-8 bg-gray-50 rounded-2xl border border-gray-100 font-sans">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Sparkles className="text-black" size={20} />
-                <h3 className="font-bold text-medium-black">Research Summary</h3>
+          <div className="my-20 p-12 bg-[#fafafa] rounded-[2rem] border border-gray-200 font-sans relative overflow-hidden">
+            <div className="relative z-10">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center shadow-lg">
+                    <Sparkles size={20} className="text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold tracking-tight text-black">AI Executive Summary</h3>
+                </div>
+                {!summary && !loadingSummary && (
+                  <button onClick={handleGenerateSummary} className="px-6 py-2.5 bg-black text-white rounded-full text-xs font-bold hover:scale-105 transition-all shadow-xl">
+                    Generate Analysis
+                  </button>
+                )}
               </div>
-              {!summary && !loadingSummary && (
-                <button onClick={handleGenerateSummary} className="px-4 py-1.5 bg-black text-white rounded-full text-xs hover:bg-gray-800 transition-all shadow-sm">
-                  Generate
-                </button>
-              )}
+              {loadingSummary && <div className="text-sm text-gray-400 animate-pulse font-mono tracking-widest">$ Analyzing paper hierarchy and metrics...</div>}
+              {summary && <p className="text-gray-600 leading-relaxed italic text-lg">{summary}</p>}
             </div>
-            {loadingSummary && <div className="text-sm text-gray-400 animate-pulse">Analyzing paper...</div>}
-            {summary && <p className="text-gray-600 leading-relaxed italic">{summary}</p>}
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-3 mt-16 pt-10 border-t border-gray-100">
             {article.tags.map(tag => (
-              <span key={tag} className="bg-gray-100 text-gray-500 px-4 py-1 rounded-full text-xs font-sans font-medium uppercase tracking-wider">
+              <span key={tag} className="bg-white border border-gray-200 text-gray-400 px-6 py-2 rounded-full text-[10px] font-sans font-bold uppercase tracking-[0.25em] shadow-sm">
                 {tag}
               </span>
             ))}
@@ -302,37 +313,28 @@ const ArticlePage: React.FC = () => {
       </div>
 
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-8 font-sans border border-gray-100">
-                <div className="flex items-center gap-3 text-red-600 mb-4">
-                    <AlertTriangle size={24} />
-                    <h3 className="text-lg font-bold">Verify Identity</h3>
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-[100] backdrop-blur-xl">
+            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-sm p-12 font-sans border border-gray-100">
+                <div className="flex flex-col items-center text-center">
+                    <div className="w-20 h-20 bg-red-50 text-red-500 rounded-3xl flex items-center justify-center mb-8 rotate-3 shadow-inner">
+                        <AlertTriangle size={40} />
+                    </div>
+                    <h3 className="text-2xl font-bold text-black mb-3 tracking-tight">Revoke Publication?</h3>
+                    <p className="text-sm text-gray-500 mb-10 leading-relaxed">This will permanently remove the research from the global repository. Identity verification required.</p>
                 </div>
-                <p className="text-sm text-gray-500 mb-6">
-                    Identity check required to delete <strong>"{article.title}"</strong>.
-                </p>
                 <input 
                     type="password"
-                    className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm focus:ring-1 focus:ring-black outline-none mb-6"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-5 text-sm focus:ring-2 focus:ring-black/5 outline-none mb-8 transition-all font-mono"
                     placeholder="GPG Token ID"
                     value={deleteToken}
                     onChange={(e) => setDeleteToken(e.target.value)}
                 />
-                <div className="flex justify-end gap-3">
-                    <button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 text-gray-400 hover:text-black text-sm">Cancel</button>
-                    <button onClick={handleDelete} className="px-6 py-2 bg-red-600 text-white rounded-lg text-sm font-bold">Delete</button>
+                <div className="flex flex-col gap-4">
+                    <button onClick={handleDelete} disabled={isDeleting} className="w-full py-5 bg-red-600 text-white rounded-2xl text-sm font-bold shadow-2xl shadow-red-200 hover:bg-red-700 transition-all">
+                        {isDeleting ? 'Processing...' : 'Verify & Delete'}
+                    </button>
+                    <button onClick={() => setShowDeleteModal(false)} className="w-full py-5 text-gray-400 hover:text-black text-sm font-bold">Cancel</button>
                 </div>
-            </div>
-        </div>
-      )}
-
-      {showTerminal && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-[100]">
-            <div className="w-full max-w-2xl bg-black rounded-lg shadow-2xl overflow-hidden border border-gray-800 font-mono text-sm">
-                <div className="p-6 h-[300px] overflow-y-auto text-red-400">
-                    {terminalLogs.map((log, i) => <div key={i} className="mb-2 break-all">{log}</div>)}
-                </div>
-                {deleteStatus === 'error' && <div className="p-4 border-t border-gray-800 bg-red-900/20 text-red-400 flex justify-between"><button onClick={() => setShowTerminal(false)} className="text-white hover:underline">Close</button></div>}
             </div>
         </div>
       )}

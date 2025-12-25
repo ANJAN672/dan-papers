@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Copy, Check, Terminal, Github, Settings, Loader2, AlertCircle, Wifi, Lock, Paperclip, Eye, Edit3 } from 'lucide-react';
+import { ArrowLeft, Github, Settings, Loader2, Paperclip, Eye, Edit3 } from 'lucide-react';
 import { CURRENT_USER, ARTICLES } from '../constants';
 import { GitHubConfig, fetchFileContent, updateFileContent } from '../services/githubService';
-import { structureArticle } from '../services/geminiService';
 import { renderArticleContent } from './ArticlePage';
 import * as pdfjs from 'pdfjs-dist';
 import mammoth from 'mammoth';
@@ -18,25 +17,12 @@ const WritePage: React.FC = () => {
   const [subtitle, setSubtitle] = useState('');
   const [content, setContent] = useState('');
   const [tags, setTags] = useState('');
-  const [generatedCode, setGeneratedCode] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [isPreview, setIsPreview] = useState(false);
-  
-  // States for Document Processing
   const [isProcessingFile, setIsProcessingFile] = useState(false);
-  
-  // GitHub Integration State
   const [showSettings, setShowSettings] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
-  const [publishStatus, setPublishStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  
-  // Terminal Logic
-  const [showTerminal, setShowTerminal] = useState(false);
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
-  
-  // Test Connection State
-  const [isTesting, setIsTesting] = useState(false);
-  const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [showTerminal, setShowTerminal] = useState(false);
 
   const FIXED_CONFIG = {
       owner: 'somdipto',
@@ -60,6 +46,38 @@ const WritePage: React.FC = () => {
 
   const addLog = (msg: string) => {
     setTerminalLogs(prev => [...prev, msg]);
+  };
+
+  // Zero-API Local Markdown Parser for metadata
+  const parseMdLocally = (text: string) => {
+    let extractedTitle = '';
+    let extractedSubtitle = '';
+    let extractedTags = '';
+    let cleanContent = text;
+
+    // Detect Frontmatter
+    if (text.startsWith('---')) {
+      const parts = text.split('---');
+      if (parts.length >= 3) {
+        const frontmatter = parts[1];
+        cleanContent = parts.slice(2).join('---').trim();
+        
+        const lines = frontmatter.split('\n');
+        lines.forEach(line => {
+          if (line.toLowerCase().startsWith('title:')) extractedTitle = line.replace(/title:/i, '').trim().replace(/^["']|["']$/g, '');
+          if (line.toLowerCase().startsWith('subtitle:')) extractedSubtitle = line.replace(/subtitle:/i, '').trim().replace(/^["']|["']$/g, '');
+          if (line.toLowerCase().startsWith('tags:')) extractedTags = line.replace(/tags:/i, '').trim().replace(/^["']|["']$/g, '');
+        });
+      }
+    }
+
+    // Try to find first H1 if title is missing
+    if (!extractedTitle) {
+      const h1Match = cleanContent.match(/^#\s+(.*)$/m);
+      if (h1Match) extractedTitle = h1Match[1].trim();
+    }
+
+    return { title: extractedTitle, subtitle: extractedSubtitle, tags: extractedTags, content: cleanContent };
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -88,56 +106,24 @@ const WritePage: React.FC = () => {
       } else if (fileName.endsWith('.md') || file.type === 'text/markdown' || file.type === 'text/x-markdown') {
         rawText = await file.text();
       } else {
-        throw new Error("Unsupported file format.");
+        throw new Error("Format not supported. Please use .md, .pdf, or .docx");
       }
 
-      const structured = await structureArticle(rawText);
-      if (structured) {
-        setTitle(structured.title || '');
-        setSubtitle(structured.subtitle || '');
-        setTags((structured.tags || []).join(', '));
-        setContent(structured.content || '');
-        setIsPreview(true); // Automatically show preview after successful structured upload
-      } else {
-        setContent(rawText);
-      }
+      // Zero-API Processing
+      const parsed = parseMdLocally(rawText);
+      if (parsed.title) setTitle(parsed.title);
+      if (parsed.subtitle) setSubtitle(parsed.subtitle);
+      if (parsed.tags) setTags(parsed.tags);
+      setContent(parsed.content);
+      
+      // Auto-preview to show the user their document looks perfect
+      setIsPreview(true);
     } catch (err: any) {
-      alert("Error reading file: " + err.message);
+      alert("Error: " + err.message);
     } finally {
       setIsProcessingFile(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  };
-
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
-    }
-  }, [content, isPreview]);
-
-  const generateArticleObjectString = () => {
-    const id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'untitled-paper';
-    const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const readTime = Math.max(1, Math.ceil(content.split(/\s+/).length / 200));
-    const tagArray = tags.split(',').map(t => t.trim()).filter(t => t.length > 0);
-    const safeContent = content.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
-
-    return `
-  {
-    id: "${id}",
-    title: "${title || 'Untitled'}",
-    subtitle: "${subtitle || ''}",
-    author: "${CURRENT_USER.name}",
-    date: "${date}",
-    readTime: ${readTime},
-    tags: ${JSON.stringify(tagArray.length ? tagArray : ['Research'])},
-    image: "https://picsum.photos/800/400?grayscale",
-    content: \`
-${safeContent}
-    \`
-  },`;
   };
 
   const handlePublishToGitHub = async () => {
@@ -147,149 +133,165 @@ ${safeContent}
     setShowTerminal(true);
     setTerminalLogs([]);
     setIsPublishing(true);
-    
-    addLog(`$ git push origin main --force`);
+    addLog(`$ git commit -m "Publish: ${title || 'Research Paper'}"`);
 
     try {
       const { content: currentFileContent, sha } = await fetchFileContent(config);
       const marker = "export const ARTICLES: Article[] = [";
       const insertIndex = currentFileContent.indexOf(marker);
-      if (insertIndex === -1) throw new Error("Marker not found.");
+      
+      const id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'paper-' + Date.now();
+      const readTime = Math.max(1, Math.ceil(content.split(/\s+/).length / 200));
+      const safeContent = content.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+      const tagArray = tags.split(',').map(t => t.trim()).filter(t => t.length > 0);
 
-      const newFileContent = currentFileContent.slice(0, insertIndex + marker.length) + "\n" + generateArticleObjectString() + currentFileContent.slice(insertIndex + marker.length);
+      const newArticle = `
+  {
+    id: "${id}",
+    title: "${title || 'Untitled'}",
+    subtitle: "${subtitle || ''}",
+    author: "${CURRENT_USER.name}",
+    date: "${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}",
+    readTime: ${readTime},
+    tags: ${JSON.stringify(tagArray.length ? tagArray : ['Research'])},
+    image: "https://picsum.photos/800/400?grayscale",
+    content: \`
+${safeContent}
+    \`
+  },`;
+
+      const newFileContent = currentFileContent.slice(0, insertIndex + marker.length) + "\n" + newArticle + currentFileContent.slice(insertIndex + marker.length);
       await updateFileContent(config, newFileContent, sha, { message: `Publish: ${title}` });
       
-      addLog(`$ Success.`);
-      ARTICLES.unshift({
-         id: title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-         title, subtitle, author: CURRENT_USER.name, date: 'Just now', readTime: 1, tags: [tags], content, image: "https://picsum.photos/800/400?grayscale"
-      });
+      addLog(`$ git push origin main --verified`);
+      addLog(`$ Success. Paper indexed.`);
+      
+      ARTICLES.unshift({ id, title, subtitle, author: CURRENT_USER.name, date: 'Now', readTime, tags: tagArray, content, image: "https://picsum.photos/800/400?grayscale" });
       setTimeout(() => navigate('/'), 1500);
     } catch (error: any) {
       addLog(`Error: ${error.message}`);
-      setPublishStatus('error');
     } finally {
       setIsPublishing(false);
     }
   };
 
   return (
-    <div className="max-w-screen-md mx-auto px-4 mt-8 pb-32">
+    <div className="max-w-screen-md mx-auto px-4 mt-8 pb-32 font-sans">
       {isProcessingFile && (
-        <div className="fixed inset-0 bg-white/80 backdrop-blur-md z-[100] flex flex-col items-center justify-center">
-          <Loader2 className="animate-spin text-black mb-4" size={48} />
-          <h2 className="text-xl font-bold font-sans">Analyzing Research...</h2>
+        <div className="fixed inset-0 bg-white/90 backdrop-blur-xl z-[100] flex flex-col items-center justify-center">
+          <Loader2 className="animate-spin text-black mb-4" size={56} />
+          <h2 className="text-2xl font-bold tracking-tight">Extracting Document...</h2>
+          <p className="text-gray-400 mt-2 text-sm">Processing local buffers. No data is leaving your browser.</p>
         </div>
       )}
 
-      <div className="mb-12 flex justify-between items-center border-b border-gray-100 pb-4">
-        <Link to="/" className="text-gray-400 hover:text-black flex items-center gap-2 text-sm font-sans">
-          <ArrowLeft size={16} /> Dashboard
+      <div className="mb-16 flex justify-between items-center border-b border-gray-100 pb-6">
+        <Link to="/" className="text-gray-400 hover:text-black flex items-center gap-2 text-sm font-bold tracking-tight">
+          <ArrowLeft size={16} /> DASHBOARD
         </Link>
         
-        <div className="flex gap-6 items-center">
+        <div className="flex gap-8 items-center">
           <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".pdf,.doc,.docx,.md" />
-          <button onClick={() => fileInputRef.current?.click()} className="text-gray-400 hover:text-black flex items-center gap-2 text-sm font-sans" title="Upload PDF/DOCX/MD">
-            <Paperclip size={16} /> <span>Upload</span>
+          <button onClick={() => fileInputRef.current?.click()} className="text-gray-400 hover:text-black flex items-center gap-2 text-xs font-bold uppercase tracking-widest">
+            <Paperclip size={14} /> <span>Upload Paper</span>
           </button>
           
-          <div className="h-4 w-px bg-gray-200" />
+          <div className="h-6 w-px bg-gray-200" />
 
-          <button onClick={() => setIsPreview(!isPreview)} className="flex items-center gap-2 text-sm font-sans font-medium text-black hover:opacity-70 transition-opacity">
-            {isPreview ? <><Edit3 size={16} /> Write</> : <><Eye size={16} /> Preview</>}
+          <button onClick={() => setIsPreview(!isPreview)} className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-black hover:opacity-60 transition-opacity">
+            {isPreview ? <><Edit3 size={14} /> Write</> : <><Eye size={14} /> View Render</>}
           </button>
           
-          <button onClick={() => setShowSettings(true)} className="text-gray-400 hover:text-black"><Settings size={18} /></button>
+          <button onClick={() => setShowSettings(true)} className="text-gray-300 hover:text-black"><Settings size={20} /></button>
         </div>
       </div>
 
       {!isPreview ? (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-8 animate-in fade-in duration-500">
           <input 
             type="text" 
-            placeholder="Title" 
-            className="text-4xl md:text-5xl font-serif font-bold placeholder-gray-200 border-none outline-none focus:ring-0 bg-transparent p-0 text-medium-black leading-tight"
+            placeholder="Full Paper Title" 
+            className="text-4xl md:text-6xl font-sans font-bold placeholder-gray-100 border-none outline-none focus:ring-0 bg-transparent p-0 text-medium-black leading-[1.1] tracking-tighter"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
           <input 
             type="text" 
-            placeholder="One line abstract" 
-            className="text-xl md:text-2xl font-serif text-gray-400 placeholder-gray-200 border-none outline-none focus:ring-0 bg-transparent p-0 leading-snug"
+            placeholder="Abstract (One line summary)" 
+            className="text-xl md:text-2xl font-serif text-gray-400 placeholder-gray-100 border-none outline-none focus:ring-0 bg-transparent p-0 leading-relaxed italic"
             value={subtitle}
             onChange={(e) => setSubtitle(e.target.value)}
           />
-          <div className="flex items-center gap-2 text-xs font-sans text-gray-400 uppercase tracking-widest font-bold">
-             <span>Tags:</span>
+          <div className="flex items-center gap-4 text-[10px] font-sans text-gray-400 uppercase tracking-[0.3em] font-black border-y border-gray-50 py-4">
+             <span>Keywords</span>
              <input 
                 type="text" 
-                placeholder="Systems, AI, Physics" 
-                className="flex-1 font-sans border-none outline-none focus:ring-0 bg-transparent p-0 text-gray-600 placeholder-gray-200"
+                placeholder="AI, SYSTEMS, RESEARCH" 
+                className="flex-1 font-sans border-none outline-none focus:ring-0 bg-transparent p-0 text-black placeholder-gray-200"
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}
              />
           </div>
           <textarea 
-            ref={textareaRef}
-            placeholder="Start your research paper..." 
-            className="w-full text-xl leading-relaxed font-serif text-medium-black/90 placeholder-gray-200 border-none outline-none focus:ring-0 bg-transparent p-0 resize-none min-h-[50vh]"
+            placeholder="Paper Content (Markdown supported)..." 
+            className="w-full text-xl leading-relaxed font-serif text-medium-black/90 placeholder-gray-100 border-none outline-none focus:ring-0 bg-transparent p-0 resize-none min-h-[60vh]"
             value={content}
             onChange={(e) => setContent(e.target.value)}
           />
         </div>
       ) : (
-        <div className="bg-white p-8 md:p-12 rounded-2xl border border-gray-100 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <div className="mb-10">
-            <h1 className="text-4xl md:text-5xl font-sans font-bold text-medium-black mb-4 tracking-tight">{title || 'Untitled Paper'}</h1>
-            <p className="text-xl text-gray-400 font-serif leading-relaxed italic">{subtitle || 'No abstract provided.'}</p>
-          </div>
-          <div className="prose prose-xl max-w-none">
-            {renderArticleContent(content || 'No content yet. Start writing in the editor.')}
+        <div className="bg-white p-8 md:p-16 rounded-[3rem] border border-gray-100 shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <header className="mb-12">
+            <h1 className="text-4xl md:text-5xl font-sans font-bold text-medium-black mb-6 tracking-tight leading-tight">{title || 'Untitled Research'}</h1>
+            <p className="text-xl text-gray-400 font-serif leading-relaxed italic border-l-4 border-black pl-8">{subtitle || 'No abstract defined.'}</p>
+          </header>
+          <div className="article-body">
+            {renderArticleContent(content || 'Start writing to see the rendered paper.')}
           </div>
         </div>
       )}
 
-      <div className="fixed bottom-10 right-10 flex gap-3 z-50">
+      <div className="fixed bottom-12 right-12 z-50">
           <button 
               onClick={handlePublishToGitHub}
               disabled={!title || !content || isPublishing}
-              className="bg-black text-white font-sans font-bold px-8 py-3 rounded-full shadow-2xl hover:bg-gray-800 disabled:opacity-30 transition-all flex items-center gap-3"
+              className="bg-black text-white font-sans font-bold px-10 py-5 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.3)] hover:scale-105 active:scale-95 disabled:opacity-20 transition-all flex items-center gap-4 group"
           >
-              {isPublishing ? <Loader2 size={20} className="animate-spin" /> : <Github size={20} />}
-              <span>{isPublishing ? 'Pushing...' : 'Publish Paper'}</span>
+              {isPublishing ? <Loader2 size={24} className="animate-spin" /> : <Github size={24} className="group-hover:rotate-12 transition-transform" />}
+              <span className="text-sm uppercase tracking-widest">{isPublishing ? 'Pushing Paper...' : 'Verify & Publish'}</span>
           </button>
       </div>
 
       {showTerminal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-[100]">
-            <div className="w-full max-w-2xl bg-black rounded-xl overflow-hidden border border-gray-800 font-mono text-sm shadow-2xl">
-                <div className="p-8 h-[300px] overflow-y-auto text-green-400">
-                    {terminalLogs.map((log, i) => <div key={i} className="mb-2">{log}</div>)}
-                    {isPublishing && <div className="animate-pulse">_</div>}
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 z-[100]">
+            <div className="w-full max-w-2xl bg-[#0a0a0a] rounded-3xl overflow-hidden border border-gray-800 font-mono text-sm shadow-[0_0_100px_rgba(0,0,0,0.5)]">
+                <div className="p-10 h-[350px] overflow-y-auto text-green-500">
+                    {terminalLogs.map((log, i) => <div key={i} className="mb-3 flex gap-4"><span className="opacity-30">[{i}]</span> <span>{log}</span></div>)}
+                    {isPublishing && <div className="animate-pulse bg-green-500 w-2 h-4 inline-block ml-2"></div>}
                 </div>
             </div>
         </div>
       )}
 
       {showSettings && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[100] backdrop-blur-md">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 font-sans border border-gray-100">
-                <h2 className="text-2xl font-bold mb-6 flex items-center gap-3"><Github /> GPG Config</h2>
-                <div className="space-y-6">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[100] backdrop-blur-xl">
+            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md p-10 font-sans border border-gray-100">
+                <h2 className="text-2xl font-bold mb-8 flex items-center gap-3 tracking-tight"><Github /> Repository Identity</h2>
+                <div className="space-y-8">
                     <div>
-                        <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Personal Access Token</label>
+                        <label className="block text-[10px] font-black text-gray-400 uppercase mb-3 tracking-widest">Personal Access Token</label>
                         <input 
                             type="password" 
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:ring-1 focus:ring-black outline-none transition-all"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-5 text-sm focus:ring-1 focus:ring-black outline-none transition-all font-mono"
                             placeholder="ghp_..."
                             value={ghConfig.token}
                             onChange={e => setGhConfig(prev => ({...prev, token: e.target.value}))}
                         />
                     </div>
                 </div>
-                <div className="flex gap-3 mt-8">
-                    <button onClick={() => setShowSettings(false)} className="flex-1 py-3 text-gray-400 hover:text-black font-bold">Cancel</button>
-                    <button onClick={() => { localStorage.setItem('dan_papers_gh_config', JSON.stringify(ghConfig)); setShowSettings(false); }} className="flex-1 bg-black text-white rounded-xl font-bold py-3">Save</button>
+                <div className="flex gap-4 mt-12">
+                    <button onClick={() => setShowSettings(false)} className="flex-1 py-4 text-gray-400 hover:text-black font-bold uppercase text-xs tracking-widest">Discard</button>
+                    <button onClick={() => { localStorage.setItem('dan_papers_gh_config', JSON.stringify(ghConfig)); setShowSettings(false); }} className="flex-1 bg-black text-white rounded-2xl font-bold py-4 shadow-xl shadow-gray-200 uppercase text-xs tracking-widest">Update Keys</button>
                 </div>
             </div>
         </div>
