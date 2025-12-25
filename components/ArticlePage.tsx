@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ARTICLES, CURRENT_USER } from '../constants';
-import { Share, MoreHorizontal, Sparkles, Trash2, AlertTriangle, Check, Image as ImageIcon } from 'lucide-react';
-import { summarizeArticle } from '../services/geminiService';
+import { Share, MoreHorizontal, Trash2, AlertTriangle, Check } from 'lucide-react';
 import { GitHubConfig, fetchFileContent, updateFileContent } from '../services/githubService';
 
 export const parseInlineMarkdown = (text: string) => {
@@ -163,8 +162,6 @@ const ArticlePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const article = ARTICLES.find(a => a.id === id);
-  const [summary, setSummary] = useState<string | null>(null);
-  const [loadingSummary, setLoadingSummary] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteToken, setDeleteToken] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
@@ -213,13 +210,6 @@ const ArticlePage: React.FC = () => {
 
   const handleEdit = () => {
     navigate('/write', { state: { editArticle: article } });
-  };
-
-  const handleGenerateSummary = async () => {
-    setLoadingSummary(true);
-    const result = await summarizeArticle(article.content);
-    setSummary(result);
-    setLoadingSummary(false);
   };
 
   const handleDelete = async () => {
@@ -311,26 +301,6 @@ const ArticlePage: React.FC = () => {
 
           <div className="article-body">
             {renderArticleContent(article.content)}
-          </div>
-
-          <div className="my-20 p-12 bg-[#fafafa] rounded-[2rem] border border-gray-200 font-sans relative overflow-hidden">
-            <div className="relative z-10">
-              <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center shadow-lg">
-                    <Sparkles size={20} className="text-white" />
-                  </div>
-                  <h3 className="text-xl font-bold tracking-tight text-black">AI Executive Summary</h3>
-                </div>
-                {!summary && !loadingSummary && (
-                  <button onClick={handleGenerateSummary} className="px-6 py-2.5 bg-black text-white rounded-full text-xs font-bold hover:scale-105 transition-all shadow-xl">
-                    Generate Analysis
-                  </button>
-                )}
-              </div>
-              {loadingSummary && <div className="text-sm text-gray-400 animate-pulse font-mono tracking-widest">$ Analyzing paper hierarchy and metrics...</div>}
-              {summary && <p className="text-gray-600 leading-relaxed italic text-lg">{summary}</p>}
-            </div>
           </div>
 
           <div className="flex flex-wrap gap-3 mt-16 pt-10 border-t border-gray-100">
