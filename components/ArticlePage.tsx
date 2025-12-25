@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ARTICLES, CURRENT_USER } from '../constants';
-import { Share, MoreHorizontal, Sparkles, Trash2, AlertTriangle, Check } from 'lucide-react';
+import { Share, MoreHorizontal, Sparkles, Trash2, AlertTriangle, Check, Image as ImageIcon } from 'lucide-react';
 import { summarizeArticle } from '../services/geminiService';
 import { GitHubConfig, fetchFileContent, updateFileContent } from '../services/githubService';
 
-// Helper to parse inline markdown (Bold, Italic, Links)
 export const parseInlineMarkdown = (text: string) => {
   let processed: React.ReactNode[] = text.split(/(\*\*.*?\*\*)/g).map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
@@ -259,7 +258,7 @@ const ArticlePage: React.FC = () => {
   };
 
   return (
-    <article className="max-w-screen-md mx-auto mt-4 mb-20 px-4 relative">
+    <article className="max-w-screen-md mx-auto mt-12 mb-20 px-4 relative z-[5]">
       {showShareToast && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[200] bg-black text-white px-6 py-3 rounded-full text-xs font-bold font-sans shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4 duration-300">
           <Check size={14} className="text-green-400" /> LINK COPIED TO CLIPBOARD
@@ -267,8 +266,8 @@ const ArticlePage: React.FC = () => {
       )}
 
       <div className="bg-white px-6 md:px-16 py-12 md:py-20 rounded-[3rem] shadow-sm border border-gray-50 overflow-hidden">
-          <header className="mb-16 relative z-10">
-            <h1 className="text-4xl md:text-6xl font-bold text-medium-black leading-[1.1] mb-8 font-sans tracking-tight pt-4">
+          <header className="mb-12 relative z-10">
+            <h1 className="text-4xl md:text-6xl font-bold text-medium-black leading-[1.1] mb-8 font-sans tracking-tight pt-8">
               {article.title}
             </h1>
             <p className="text-xl md:text-2xl text-gray-400 font-serif leading-relaxed italic border-l-4 border-black pl-8 py-2">
@@ -276,7 +275,7 @@ const ArticlePage: React.FC = () => {
             </p>
           </header>
 
-          <div className="flex items-center justify-between mb-20 border-b border-gray-100 pb-12">
+          <div className="flex items-center justify-between mb-16 border-b border-gray-100 pb-12">
             <div className="flex items-center gap-5">
               <img src={CURRENT_USER.image} alt="Author" className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-md" />
               <div className="font-sans">
@@ -303,6 +302,12 @@ const ArticlePage: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {article.image && (
+            <div className="mb-16 rounded-3xl overflow-hidden border border-gray-100 shadow-sm">
+              <img src={article.image} alt="Cover" className="w-full h-auto max-h-[500px] object-cover" />
+            </div>
+          )}
 
           <div className="article-body">
             {renderArticleContent(article.content)}

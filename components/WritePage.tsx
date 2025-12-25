@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Github, Settings, Loader2, Paperclip, Eye, Edit3 } from 'lucide-react';
+import { ArrowLeft, Github, Settings, Loader2, Paperclip, Eye, Edit3, Image as ImageIcon, X } from 'lucide-react';
 import { CURRENT_USER, ARTICLES } from '../constants';
 import { GitHubConfig, fetchFileContent, updateFileContent } from '../services/githubService';
 import { renderArticleContent } from './ArticlePage';
@@ -14,14 +14,15 @@ const WritePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   
-  // Data passed from Edit button in ArticlePage
   const editArticle = location.state?.editArticle;
 
   const [title, setTitle] = useState('');
   const [subtitle, setSubtitle] = useState('');
   const [content, setContent] = useState('');
   const [tags, setTags] = useState('');
+  const [image, setImage] = useState('');
   const [isPreview, setIsPreview] = useState(false);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -41,14 +42,13 @@ const WritePage: React.FC = () => {
     ...FIXED_CONFIG
   });
 
-  // Pre-load data if in Edit Mode
   useEffect(() => {
     if (editArticle) {
       setTitle(editArticle.title);
       setSubtitle(editArticle.subtitle);
       setTags(editArticle.tags.join(', '));
       setContent(editArticle.content);
-      // Optional: Auto-enable preview if we are editing
+      setImage(editArticle.image || '');
       setIsPreview(true);
     }
   }, [editArticle]);
@@ -57,7 +57,7 @@ const WritePage: React.FC = () => {
     const stored = localStorage.getItem('dan_papers_gh_config');
     if (stored) {
       const parsed = JSON.parse(stored);
-      setGhConfig(prev => ({ ...prev, token: parsed.token || '' }));
+      setGhConfig(prev => ({ ...prev, token: (parsed.token || '').trim() }));
     }
   }, []);
 
@@ -65,33 +65,15 @@ const WritePage: React.FC = () => {
     setTerminalLogs(prev => [...prev, msg]);
   };
 
-  const parseMdLocally = (text: string) => {
-    let extractedTitle = '';
-    let extractedSubtitle = '';
-    let extractedTags = '';
-    let cleanContent = text;
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    if (text.startsWith('---')) {
-      const parts = text.split('---');
-      if (parts.length >= 3) {
-        const frontmatter = parts[1];
-        cleanContent = parts.slice(2).join('---').trim();
-        
-        const lines = frontmatter.split('\n');
-        lines.forEach(line => {
-          if (line.toLowerCase().startsWith('title:')) extractedTitle = line.replace(/title:/i, '').trim().replace(/^["']|["']$/g, '');
-          if (line.toLowerCase().startsWith('subtitle:')) extractedSubtitle = line.replace(/subtitle:/i, '').trim().replace(/^["']|["']$/g, '');
-          if (line.toLowerCase().startsWith('tags:')) extractedTags = line.replace(/tags:/i, '').trim().replace(/^["']|["']$/g, '');
-        });
-      }
-    }
-
-    if (!extractedTitle) {
-      const h1Match = cleanContent.match(/^#\s+(.*)$/m);
-      if (h1Match) extractedTitle = h1Match[1].trim();
-    }
-
-    return { title: extractedTitle, subtitle: extractedSubtitle, tags: extractedTags, content: cleanContent };
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImage(reader.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -120,14 +102,25 @@ const WritePage: React.FC = () => {
       } else if (fileName.endsWith('.md') || file.type === 'text/markdown' || file.type === 'text/x-markdown') {
         rawText = await file.text();
       } else {
-        throw new Error("Format not supported. Please use .md, .pdf, or .docx");
+        throw new Error("Format not supported.");
       }
 
-      const parsed = parseMdLocally(rawText);
-      if (parsed.title) setTitle(parsed.title);
-      if (parsed.subtitle) setSubtitle(parsed.subtitle);
-      if (parsed.tags) setTags(parsed.tags);
-      setContent(parsed.content);
+      if (rawText.startsWith('---')) {
+        const parts = rawText.split('---');
+        if (parts.length >= 3) {
+          const frontmatter = parts[1];
+          const lines = frontmatter.split('\n');
+          lines.forEach(line => {
+            if (line.toLowerCase().startsWith('title:')) setTitle(line.replace(/title:/i, '').trim().replace(/^["']|["']$/g, ''));
+            if (line.toLowerCase().startsWith('subtitle:')) setSubtitle(line.replace(/subtitle:/i, '').trim().replace(/^["']|["']$/g, ''));
+            if (line.toLowerCase().startsWith('tags:')) setTags(line.replace(/tags:/i, '').trim().replace(/^["']|["']$/g, ''));
+            if (line.toLowerCase().startsWith('image:')) setImage(line.replace(/image:/i, '').trim().replace(/^["']|["']$/g, ''));
+          });
+          setContent(parts.slice(2).join('---').trim());
+        }
+      } else {
+        setContent(rawText);
+      }
       
       setIsPreview(true);
     } catch (err: any) {
@@ -140,13 +133,17 @@ const WritePage: React.FC = () => {
 
   const handlePublishToGitHub = async () => {
     const config = { ...ghConfig, token: ghConfig.token.trim() };
-    if (!config.token) { setShowSettings(true); return; }
+    if (!config.token) { 
+        setShowSettings(true); 
+        return; 
+    }
 
     setShowTerminal(true);
     setTerminalLogs([]);
     setIsPublishing(true);
     
     const isEdit = !!editArticle;
+    addLog(`$ git status`);
     addLog(`$ git commit -m "${isEdit ? 'Update' : 'Publish'}: ${title || 'Research Paper'}"`);
 
     try {
@@ -166,19 +163,17 @@ const WritePage: React.FC = () => {
     date: "${editArticle?.date || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}",
     readTime: ${readTime},
     tags: ${JSON.stringify(tagArray.length ? tagArray : ['Research'])},
-    image: "${editArticle?.image || 'https://picsum.photos/800/400?grayscale'}",
+    image: "${image}",
     content: \`
 ${safeContent}
     \`
   },`;
 
       let newFileContent = "";
-
       if (isEdit) {
-        addLog(`> Identifying existing entry for ID: ${targetId}...`);
         const searchStr = `id: "${targetId}"`;
         const idIndex = currentFileContent.indexOf(searchStr);
-        if (idIndex === -1) throw new Error("Could not locate existing article in source.");
+        if (idIndex === -1) throw new Error("Could not locate existing article.");
 
         let startIndex = idIndex;
         while (startIndex >= 0 && currentFileContent[startIndex] !== '{') startIndex--;
@@ -191,8 +186,6 @@ ${safeContent}
             if (braceCount === 0 && currentFileContent[endIndex] === '}') break;
             endIndex++;
         }
-        
-        // Remove old, insert new at same location
         newFileContent = currentFileContent.slice(0, startIndex) + articleObject.trim() + currentFileContent.slice(endIndex + 1);
       } else {
         const marker = "export const ARTICLES: Article[] = [";
@@ -201,12 +194,10 @@ ${safeContent}
       }
 
       await updateFileContent(config, newFileContent, sha, { message: `${isEdit ? 'Update' : 'Publish'}: ${title}` });
-      
       addLog(`$ git push origin main --verified`);
       addLog(`$ Success. Paper index updated.`);
       
-      // Local sync
-      const localArticle = { id: targetId, title, subtitle, author: editArticle?.author || CURRENT_USER.name, date: editArticle?.date || 'Now', readTime, tags: tagArray, content, image: editArticle?.image || "https://picsum.photos/800/400?grayscale" };
+      const localArticle = { id: targetId, title, subtitle, author: editArticle?.author || CURRENT_USER.name, date: editArticle?.date || 'Now', readTime, tags: tagArray, content, image };
       if (isEdit) {
         const idx = ARTICLES.findIndex(a => a.id === targetId);
         if (idx > -1) ARTICLES[idx] = localArticle;
@@ -216,19 +207,23 @@ ${safeContent}
       
       setTimeout(() => navigate(isEdit ? `/article/${targetId}` : '/'), 1500);
     } catch (error: any) {
-      addLog(`Error: ${error.message}`);
+      addLog(`! FAILED: ${error.message}`);
+      if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+        addLog(`! ACTION REQUIRED: Token is invalid. Please update "Repository Identity" settings.`);
+      }
+      setIsPublishing(false); // Stop spinning on error
     } finally {
-      setIsPublishing(false);
+      // We keep isPublishing true unless an error occurred so that the "Pushing Paper..." button stays
     }
   };
 
   return (
-    <div className="max-w-screen-md mx-auto px-4 mt-8 pb-32 font-sans">
+    <div className="max-w-screen-md mx-auto px-4 mt-8 pb-32 font-sans relative z-10">
       {isProcessingFile && (
         <div className="fixed inset-0 bg-white/90 backdrop-blur-xl z-[100] flex flex-col items-center justify-center">
           <Loader2 className="animate-spin text-black mb-4" size={56} />
           <h2 className="text-2xl font-bold tracking-tight">Extracting Document...</h2>
-          <p className="text-gray-400 mt-2 text-sm">Processing local buffers. No data is leaving your browser.</p>
+          <p className="text-gray-400 mt-2 text-sm">Processing local buffers.</p>
         </div>
       )}
 
@@ -240,7 +235,7 @@ ${safeContent}
         <div className="flex gap-8 items-center">
           <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".pdf,.doc,.docx,.md" />
           <button onClick={() => fileInputRef.current?.click()} className="text-gray-400 hover:text-black flex items-center gap-2 text-xs font-bold uppercase tracking-widest">
-            <Paperclip size={14} /> <span>{editArticle ? 'Replace with doc' : 'Upload Paper'}</span>
+            <Paperclip size={14} /> <span>{editArticle ? 'Replace Doc' : 'Upload doc'}</span>
           </button>
           
           <div className="h-6 w-px bg-gray-200" />
@@ -255,6 +250,35 @@ ${safeContent}
 
       {!isPreview ? (
         <div className="flex flex-col gap-8 animate-in fade-in duration-500">
+          <div className="mb-4">
+             {image ? (
+               <div className="relative group rounded-3xl overflow-hidden border border-gray-100 shadow-sm max-h-[300px]">
+                  <img src={image} alt="Cover Preview" className="w-full h-auto object-cover" />
+                  <button onClick={() => setImage('')} className="absolute top-4 right-4 p-2 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                    <X size={20} />
+                  </button>
+               </div>
+             ) : (
+               <div className="flex flex-col gap-4">
+                 <button onClick={() => imageInputRef.current?.click()} className="w-full h-32 border-2 border-dashed border-gray-100 rounded-3xl flex flex-col items-center justify-center text-gray-300 hover:border-black hover:text-black transition-all group">
+                    <ImageIcon size={32} className="mb-2 group-hover:scale-110 transition-transform" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest">Add Research Figure / Cover Image</span>
+                    <input type="file" ref={imageInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
+                 </button>
+                 <div className="flex items-center gap-2 text-[10px] font-sans text-gray-400 uppercase tracking-widest px-4">
+                   <span>OR PASTE URL</span>
+                   <input 
+                      type="text" 
+                      placeholder="https://..." 
+                      className="flex-1 bg-transparent border-none outline-none focus:ring-0 text-black placeholder-gray-200"
+                      value={image}
+                      onChange={(e) => setImage(e.target.value)}
+                   />
+                 </div>
+               </div>
+             )}
+          </div>
+
           <input 
             type="text" 
             placeholder="Full Paper Title" 
@@ -292,6 +316,7 @@ ${safeContent}
             <h1 className="text-4xl md:text-5xl font-sans font-bold text-medium-black mb-6 tracking-tight leading-tight">{title || 'Untitled Research'}</h1>
             <p className="text-xl text-gray-400 font-serif leading-relaxed italic border-l-4 border-black pl-8">{subtitle || 'No abstract defined.'}</p>
           </header>
+          {image && <img src={image} className="w-full h-auto rounded-2xl mb-12 shadow-sm" alt="Preview" />}
           <div className="article-body">
             {renderArticleContent(content || 'Start writing to see the rendered paper.')}
           </div>
@@ -301,7 +326,7 @@ ${safeContent}
       <div className="fixed bottom-12 right-12 z-50">
           <button 
               onClick={handlePublishToGitHub}
-              disabled={!title || !content || isPublishing}
+              disabled={!title || !content || (isPublishing && showTerminal)}
               className="bg-black text-white font-sans font-bold px-10 py-5 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.3)] hover:scale-105 active:scale-95 disabled:opacity-20 transition-all flex items-center gap-4 group"
           >
               {isPublishing ? <Loader2 size={24} className="animate-spin" /> : <Github size={24} className="group-hover:rotate-12 transition-transform" />}
@@ -310,13 +335,59 @@ ${safeContent}
       </div>
 
       {showTerminal && (
-        <div className="fixed inset-0 bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 z-[100]">
-            <div className="w-full max-w-2xl bg-[#0a0a0a] rounded-3xl overflow-hidden border border-gray-800 font-mono text-sm shadow-[0_0_100px_rgba(0,0,0,0.5)]">
+        <div 
+          className="fixed inset-0 bg-black/90 backdrop-blur-2xl flex items-center justify-center p-4 z-[100] cursor-pointer"
+          onClick={() => {
+              if (!isPublishing) setShowTerminal(false);
+              else {
+                  // If stuck, allow escape anyway after a warning logic or simple click
+                  setShowTerminal(false);
+                  setIsPublishing(false);
+              }
+          }}
+        >
+            <div 
+              className="w-full max-w-2xl bg-[#0a0a0a] rounded-3xl overflow-hidden border border-gray-800 font-mono text-sm shadow-[0_0_100px_rgba(0,0,0,0.5)] cursor-default"
+              onClick={e => e.stopPropagation()}
+            >
+                {/* Terminal Header Bar */}
+                <div className="bg-[#1a1a1a] p-4 flex justify-between items-center border-b border-gray-800">
+                    <div className="flex gap-2">
+                        <div className="w-3 h-3 rounded-full bg-red-500" />
+                        <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                        <div className="w-3 h-3 rounded-full bg-green-500" />
+                    </div>
+                    <div className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">git-deploy-process</div>
+                    <button 
+                      onClick={() => { setShowTerminal(false); setIsPublishing(false); }}
+                      className="text-gray-500 hover:text-white transition-colors"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+                
                 <div className="p-10 h-[350px] overflow-y-auto text-green-500">
                     <div className="mb-4 text-xs opacity-50 uppercase tracking-widest">Repository Log Stream</div>
-                    {terminalLogs.map((log, i) => <div key={i} className="mb-3 flex gap-4"><span className="opacity-30">[{i}]</span> <span>{log}</span></div>)}
+                    {terminalLogs.map((log, i) => (
+                        <div key={i} className={`mb-3 flex gap-4 ${log.startsWith('!') ? 'text-red-400' : ''}`}>
+                            <span className="opacity-30">[{i}]</span> 
+                            <span className="whitespace-pre-wrap">{log}</span>
+                        </div>
+                    ))}
                     {isPublishing && <div className="animate-pulse bg-green-500 w-2 h-4 inline-block ml-2"></div>}
                 </div>
+                
+                {/* Terminal Footer */}
+                {!isPublishing && (
+                    <div className="p-6 bg-[#1a1a1a] border-t border-gray-800 text-center">
+                        <button 
+                            onClick={() => { setShowTerminal(false); setIsPublishing(false); }}
+                            className="bg-white text-black px-8 py-2 rounded-full text-xs font-bold uppercase tracking-widest hover:scale-105 transition-all"
+                        >
+                            Exit Process
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
       )}
@@ -328,6 +399,7 @@ ${safeContent}
                 <div className="space-y-8">
                     <div>
                         <label className="block text-[10px] font-black text-gray-400 uppercase mb-3 tracking-widest">Personal Access Token</label>
+                        <p className="text-[10px] text-gray-400 mb-2">Required scopes: <code>repo</code></p>
                         <input 
                             type="password" 
                             className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-5 text-sm focus:ring-1 focus:ring-black outline-none transition-all font-mono"
@@ -339,7 +411,12 @@ ${safeContent}
                 </div>
                 <div className="flex gap-4 mt-12">
                     <button onClick={() => setShowSettings(false)} className="flex-1 py-4 text-gray-400 hover:text-black font-bold uppercase text-xs tracking-widest">Discard</button>
-                    <button onClick={() => { localStorage.setItem('dan_papers_gh_config', JSON.stringify(ghConfig)); setShowSettings(false); }} className="flex-1 bg-black text-white rounded-2xl font-bold py-4 shadow-xl shadow-gray-200 uppercase text-xs tracking-widest">Update Keys</button>
+                    <button onClick={() => { 
+                        const cleanToken = ghConfig.token.trim();
+                        localStorage.setItem('dan_papers_gh_config', JSON.stringify({...ghConfig, token: cleanToken})); 
+                        setGhConfig(prev => ({...prev, token: cleanToken}));
+                        setShowSettings(false); 
+                    }} className="flex-1 bg-black text-white rounded-2xl font-bold py-4 shadow-xl shadow-gray-200 uppercase text-xs tracking-widest">Update Keys</button>
                 </div>
             </div>
         </div>
