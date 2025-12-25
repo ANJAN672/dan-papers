@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ARTICLES, CURRENT_USER } from '../constants';
-import { Share, MoreHorizontal, Trash2, AlertTriangle, Check } from 'lucide-react';
+// Added missing Loader2 to imports from lucide-react to fix compilation error on line 364
+import { Share, MoreHorizontal, Trash2, AlertTriangle, Check, ShieldCheck, Loader2 } from 'lucide-react';
 import { GitHubConfig, fetchFileContent, updateFileContent } from '../services/githubService';
 
 export const parseInlineMarkdown = (text: string) => {
@@ -163,16 +165,15 @@ const ArticlePage: React.FC = () => {
   const navigate = useNavigate();
   const article = ARTICLES.find(a => a.id === id);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteToken, setDeleteToken] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
-  const [ghConfig, setGhConfig] = useState<GitHubConfig | null>(null);
+  const [ghSession, setGhSession] = useState<any>(null);
   const [showShareToast, setShowShareToast] = useState(false);
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    const stored = localStorage.getItem('dan_papers_gh_config');
+    const stored = localStorage.getItem('dan_papers_gh_session');
     if (stored) {
-        setGhConfig(JSON.parse(stored));
+        setGhSession(JSON.parse(stored));
     }
   }, [id]);
 
@@ -213,34 +214,54 @@ const ArticlePage: React.FC = () => {
   };
 
   const handleDelete = async () => {
-    if (!ghConfig || !deleteToken) return;
+    if (!ghSession) return;
     setIsDeleting(true);
     try {
-        const configWithToken = { ...ghConfig, token: deleteToken };
-        const { content: fileContent, sha } = await fetchFileContent(configWithToken);
-        const searchStr = `id: "${article.id}"`;
-        const idIndex = fileContent.indexOf(searchStr);
-        if (idIndex === -1) throw new Error("ID not found");
+        const config: GitHubConfig = {
+          token: ghSession.token,
+          owner: ghSession.user.login,
+          repo: 'dan-papers',
+          path: 'constants.ts',
+          branch: 'main'
+        };
 
-        let startIndex = idIndex;
+        const { content: fileContent, sha } = await fetchFileContent(config);
+        
+        const idRegex = new RegExp(`id:\\s*["']${article.id}["']`, 'm');
+        const match = fileContent.match(idRegex);
+        
+        if (!match || match.index === undefined) throw new Error("Target ID not found in registry.");
+
+        let startIndex = match.index;
         while (startIndex >= 0 && fileContent[startIndex] !== '{') startIndex--;
         
-        let endIndex = idIndex;
+        let endIndex = match.index;
         let braceCount = 0;
+        let foundEnd = false;
         while (endIndex < fileContent.length) {
             if (fileContent[endIndex] === '{') braceCount++;
-            if (fileContent[endIndex] === '}') braceCount--;
-            if (braceCount === 0 && fileContent[endIndex] === '}') break;
+            if (fileContent[endIndex] === '}') {
+              braceCount--;
+              if (braceCount === 0) {
+                foundEnd = true;
+                break;
+              }
+            }
             endIndex++;
         }
 
-        const newContent = fileContent.slice(0, startIndex) + fileContent.slice(endIndex + 2);
-        await updateFileContent(configWithToken, newContent, sha, { message: `Delete: ${article.title}` });
+        if (!foundEnd) throw new Error("Could not boundary-check the article object.");
+
+        const newContent = fileContent.slice(0, startIndex) + fileContent.slice(endIndex + 1).replace(/^,?\s*/, '');
+        await updateFileContent(config, newContent, sha, `Delete Research: ${article.title}`);
+        
+        // Optimistic local update
         const idx = ARTICLES.findIndex(a => a.id === article.id);
         if (idx > -1) ARTICLES.splice(idx, 1);
+        
         navigate('/');
     } catch (e: any) {
-        alert("Error: " + e.message);
+        alert("Operation Failed: " + e.message);
     } finally {
         setIsDeleting(false);
         setShowDeleteModal(false);
@@ -251,7 +272,7 @@ const ArticlePage: React.FC = () => {
     <article className="max-w-screen-md mx-auto mt-12 mb-20 px-4 relative z-[5]">
       {showShareToast && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[200] bg-black dark:bg-zinc-800 text-white px-6 py-3 rounded-full text-xs font-bold font-sans shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4 duration-300">
-          <Check size={14} className="text-green-400" /> LINK COPIED TO CLIPBOARD
+          <Check size={14} className="text-green-400" /> BROADCAST LINK COPIED
         </div>
       )}
 
@@ -267,7 +288,11 @@ const ArticlePage: React.FC = () => {
 
           <div className="flex items-center justify-between mb-16 border-b border-gray-100 dark:border-zinc-800 pb-12">
             <div className="flex items-center gap-5">
-              <img src={CURRENT_USER.image} alt="Author" className="w-14 h-14 rounded-full object-cover border-2 border-white dark:border-zinc-800 shadow-md" />
+              <img 
+                src={article.authorImage || (article.author === CURRENT_USER.name ? CURRENT_USER.image : `https://api.dicebear.com/7.x/initials/svg?seed=${article.author}`)} 
+                alt="Author" 
+                className="w-14 h-14 rounded-full object-cover border-2 border-white dark:border-zinc-800 shadow-md" 
+              />
               <div className="font-sans">
                 <span className="font-bold text-medium-black dark:text-white block text-base tracking-tight">{article.author}</span>
                 <div className="text-xs text-medium-gray dark:text-zinc-500 flex items-center gap-3 mt-1">
@@ -279,7 +304,7 @@ const ArticlePage: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-4 md:gap-8 text-gray-400">
-              {ghConfig && (
+              {ghSession && (
                 <button onClick={() => setShowDeleteModal(true)} title="Delete Paper" className="hover:text-red-500 transition-colors p-2">
                     <Trash2 size={22} />
                 </button>
@@ -314,26 +339,33 @@ const ArticlePage: React.FC = () => {
 
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-[100] backdrop-blur-xl">
-            <div className="bg-white dark:bg-[#0c0c0c] rounded-[2.5rem] shadow-2xl w-full max-w-sm p-12 font-sans border border-gray-100 dark:border-zinc-800">
+            <div className="bg-white dark:bg-[#0c0c0c] rounded-[2.5rem] shadow-2xl w-full max-w-sm p-12 font-sans border border-gray-100 dark:border-zinc-800 animate-in fade-in zoom-in duration-300">
                 <div className="flex flex-col items-center text-center">
                     <div className="w-20 h-20 bg-red-50 dark:bg-red-950/30 text-red-500 rounded-3xl flex items-center justify-center mb-8 rotate-3 shadow-inner">
                         <AlertTriangle size={40} />
                     </div>
                     <h3 className="text-2xl font-bold text-black dark:text-white mb-3 tracking-tight">Revoke Publication?</h3>
-                    <p className="text-sm text-gray-500 dark:text-zinc-500 mb-10 leading-relaxed">This will permanently remove the research from the global repository. Identity verification required.</p>
+                    <p className="text-sm text-gray-500 dark:text-zinc-500 mb-10 leading-relaxed">This research will be permanently purged from the registry.</p>
                 </div>
-                <input 
-                    type="password"
-                    className="w-full bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-5 text-sm focus:ring-2 focus:ring-black dark:focus:ring-white/10 outline-none mb-8 transition-all font-mono dark:text-white"
-                    placeholder="GPG Token ID"
-                    value={deleteToken}
-                    onChange={(e) => setDeleteToken(e.target.value)}
-                />
+                
+                <div className="bg-gray-50 dark:bg-zinc-900 rounded-2xl p-6 mb-8 border border-gray-100 dark:border-zinc-800 flex items-center gap-4">
+                   <ShieldCheck size={20} className="text-blue-500" />
+                   <div className="text-left">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Authenticated as</p>
+                      <p className="text-xs font-bold text-black dark:text-white">{ghSession.user.login}</p>
+                   </div>
+                </div>
+
                 <div className="flex flex-col gap-4">
-                    <button onClick={handleDelete} disabled={isDeleting} className="w-full py-5 bg-red-600 text-white rounded-2xl text-sm font-bold shadow-2xl shadow-red-200 hover:bg-red-700 transition-all">
-                        {isDeleting ? 'Processing...' : 'Verify & Delete'}
+                    <button 
+                      onClick={handleDelete} 
+                      disabled={isDeleting} 
+                      className="w-full py-5 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-2xl shadow-red-500/20 hover:bg-red-700 transition-all flex items-center justify-center gap-2"
+                    >
+                        {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                        {isDeleting ? 'Purging...' : 'Confirm Purge'}
                     </button>
-                    <button onClick={() => setShowDeleteModal(false)} className="w-full py-5 text-gray-400 hover:text-black dark:hover:text-white text-sm font-bold">Cancel</button>
+                    <button onClick={() => setShowDeleteModal(false)} className="w-full py-2 text-gray-400 hover:text-black dark:hover:text-white text-[10px] font-black uppercase tracking-widest transition-colors">Cancel</button>
                 </div>
             </div>
         </div>

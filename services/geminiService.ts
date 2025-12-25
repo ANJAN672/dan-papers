@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 
 // Always use the API key from process.env.API_KEY directly in the constructor.
@@ -10,7 +9,9 @@ export const summarizeArticle = async (text: string): Promise<string> => {
       model: 'gemini-3-flash-preview',
       contents: `Please provide a concise, academic summary (approx. 3-4 sentences) of the following research paper content. Focus on the core hypothesis and conclusion.\n\n${text}`,
       config: {
+        // Correct compliance for setting maxOutputTokens alongside thinkingBudget for Gemini 3 models
         maxOutputTokens: 200,
+        thinkingConfig: { thinkingBudget: 100 },
         temperature: 0.5,
       }
     });
