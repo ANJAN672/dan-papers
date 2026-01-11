@@ -1,21 +1,20 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { useMutation } from "../lib/api";
+import { supabase } from "../lib/supabase";
 
-interface User {
-  _id: string;
-  _creationTime: number;
-  userId: string;
+
+export interface User {
+  id: string;
+  userId: string; // Alias for id to match app usage
   name: string;
   email?: string;
-  image: string;
-  createdAt: number;
+  image?: string;
 }
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  signIn: () => void;
-  signOut: () => void;
+  signIn: () => Promise<void>;
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -29,44 +28,57 @@ export const useAuth = () => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  console.log("AuthProvider (Supabase) rendering");
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const signIn = useMutation("signIn" as any);
-  const signOut = useMutation("signOut" as any);
+  const mapUser = (sbUser: import("@supabase/supabase-js").User | null | undefined): User | null => {
+    if (!sbUser) return null;
+    return {
+      id: sbUser.id,
+      userId: sbUser.id,
+      name: sbUser.user_metadata?.full_name || sbUser.user_metadata?.name || sbUser.email || "Anonymous",
+      email: sbUser.email,
+      image: sbUser.user_metadata?.avatar_url || sbUser.user_metadata?.picture || "",
+    };
+  };
 
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const identity = await fetch("/api/auth/identity", {
-          method: "GET",
-          credentials: "include",
-        });
-        if (identity.ok) {
-          const userData = await identity.json();
-          setUser(userData);
-        } else {
-          setUser(null);
-        }
-      } catch (error) {
-        console.error("Error fetching user:", error);
-        setUser(null);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    // Check active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(mapUser(session?.user));
+      setIsLoading(false);
+    });
 
-    fetchUser();
+    // Listen for changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(mapUser(session?.user));
+      setIsLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const handleSignIn = async () => {
-    await signIn({ provider: "github" } as any);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'github',
+      options: {
+        redirectTo: `${window.location.origin}/`, // Redirect to home after login
+        queryParams: {
+          prompt: 'consent'
+        }
+      }
+    });
+    if (error) {
+      console.error("Error signing in:", error);
+    }
   };
 
   const handleSignOut = async () => {
-    await signOut({} as any);
-    setUser(null);
-    window.location.href = "/";
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error("Error signing out:", error);
+    }
   };
 
   return (

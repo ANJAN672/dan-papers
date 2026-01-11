@@ -1,4 +1,5 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation } from "../_generated/server";
+import { auth } from "../auth";
 import { v } from "convex/values";
 
 export const getByUserId = query({
@@ -7,6 +8,21 @@ export const getByUserId = query({
     const user = await ctx.db
       .query("users")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .unique();
+    return user;
+  },
+});
+
+export const viewer = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) {
+      return null;
+    }
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
       .unique();
     return user;
   },

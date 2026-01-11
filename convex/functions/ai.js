@@ -1,23 +1,23 @@
-import { mutation } from "./_generated/server";
+import { mutation, action } from "../_generated/server";
 import { GoogleGenAI, Type } from "@google/genai";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+import { v } from "convex/values";
 
 export const summarizeArticle = mutation({
   args: { text: v.string() },
   handler: async (ctx, args) => {
+    // Initialize inside the handler to access env vars
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-1.5-flash",
         contents: `Please provide a concise, academic summary (approx. 3-4 sentences) of the following research paper content. Focus on the core hypothesis and conclusion.\n\n${args.text}`,
         config: {
           maxOutputTokens: 200,
-          thinkingConfig: { thinkingBudget: 100 },
           temperature: 0.5,
         },
       });
 
-      return response.text || "No summary generated.";
+      return response.text() || "No summary generated.";
     } catch (error) {
       console.error("Error summarizing article:", error);
       return "Failed to generate summary. Please try again later.";
@@ -28,9 +28,11 @@ export const summarizeArticle = mutation({
 export const structureArticle = mutation({
   args: { rawText: v.string() },
   handler: async (ctx, args) => {
+    // Initialize inside the handler to access env vars
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-1.5-flash",
         contents: `You are a professional research paper editor. Convert the following raw text into a beautifully structured Markdown blog post for "Dan Papers".
         
         CRITICAL INSTRUCTIONS:
@@ -58,7 +60,7 @@ export const structureArticle = mutation({
         },
       });
 
-      return JSON.parse(response.text || "{}");
+      return JSON.parse(response.text() || "{}");
     } catch (error) {
       console.error("Error structuring article:", error);
       return null;

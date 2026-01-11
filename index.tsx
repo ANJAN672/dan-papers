@@ -1,10 +1,10 @@
 import React from 'react';
+console.log("Index.tsx is executing - FRESH LOAD " + new Date().toISOString());
 import ReactDOM from 'react-dom/client';
-import { ConvexAuthProvider } from "@convex-dev/auth/react";
-import { ConvexReactClient } from "convex/react";
-import { AuthProvider } from "./context/AuthContext";
+import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { AuthProvider } from "./src/context/AuthContext";
 import App from './App';
-import { convex } from "./lib/convex";
+import { convex } from "./src/lib/convex";
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -14,10 +14,10 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <ConvexAuthProvider client={convex}>
+    <ConvexProvider client={convex}>
       <AuthProvider>
         <App />
       </AuthProvider>
-    </ConvexAuthProvider>
+    </ConvexProvider>
   </React.StrictMode>
 );

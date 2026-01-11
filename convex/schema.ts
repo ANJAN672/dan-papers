@@ -1,14 +1,18 @@
 import { defineSchema, defineTable } from "convex/server";
+import { authTables } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  ...authTables,
   users: defineTable({
     userId: v.string(),
     name: v.string(),
     email: v.optional(v.string()),
     image: v.string(),
     createdAt: v.number(),
-  }).index("by_userId", ["userId"]),
+  }).index("by_userId", ["userId"])
+    .index("by_email", ["email"])
+    .index("email", ["email"]), // Added to fix "Index users.email not found" error
 
   articles: defineTable({
     title: v.string(),

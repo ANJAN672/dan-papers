@@ -2,11 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ARTICLES, CURRENT_USER } from '../constants';
-// Added missing Loader2 to imports from lucide-react to fix compilation error on line 364
 import { Share, MoreHorizontal, Trash2, AlertTriangle, Check, ShieldCheck, Loader2 } from 'lucide-react';
-import { GitHubConfig, fetchFileContent, updateFileContent } from '../services/githubService';
+import { useMutation, useQuery } from "convex/react";
+import { api } from "../convex/_generated/api";
+import { useAuth } from '../src/context/AuthContext';
 
 export const parseInlineMarkdown = (text: string) => {
+  if (!text) return null;
   let processed: React.ReactNode[] = text.split(/(\*\*.*?\*\*)/g).map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
       return <strong key={i} className="font-bold text-black dark:text-white">{part.slice(2, -2)}</strong>;
@@ -39,11 +41,11 @@ export const parseInlineMarkdown = (text: string) => {
       while ((match = linkRegex.exec(part)) !== null) {
         subParts.push(part.substring(lastIndex, match.index));
         subParts.push(
-          <a 
-            key={match.index} 
-            href={match[2]} 
-            target="_blank" 
-            rel="noopener noreferrer" 
+          <a
+            key={match.index}
+            href={match[2]}
+            target="_blank"
+            rel="noopener noreferrer"
             className="text-medium-black dark:text-white underline decoration-gray-300 dark:decoration-zinc-700 hover:decoration-black dark:hover:decoration-white transition-all"
           >
             {match[1]}
@@ -62,9 +64,10 @@ export const parseInlineMarkdown = (text: string) => {
 };
 
 export const renderArticleContent = (text: string) => {
+  if (!text) return null;
   const lines = text.split('\n');
   const elements: React.ReactNode[] = [];
-  
+
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
@@ -75,7 +78,7 @@ export const renderArticleContent = (text: string) => {
         tableLines.push(lines[i].trim());
         i++;
       }
-      
+
       if (tableLines.length >= 2) {
         const headerRow = tableLines[0].split('|').filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
         const alignmentRow = tableLines[1].split('|').filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
@@ -86,7 +89,7 @@ export const renderArticleContent = (text: string) => {
           return 'left';
         });
 
-        const bodyRows = tableLines.slice(2).map(row => 
+        const bodyRows = tableLines.slice(2).map(row =>
           row.split('|').filter((_, idx, arr) => idx > 0 && idx < arr.length - 1)
         );
 
@@ -122,7 +125,7 @@ export const renderArticleContent = (text: string) => {
 
     if (line.trim().startsWith('```')) {
       const codeLines: string[] = [];
-      i++; 
+      i++;
       while (i < lines.length && !lines[i].trim().startsWith('```')) {
         codeLines.push(lines[i]);
         i++;
@@ -153,28 +156,34 @@ export const renderArticleContent = (text: string) => {
     } else {
       elements.push(<div key={i} className="h-4" />);
     }
-    
+
     i++;
   }
-  
+
   return elements;
 };
 
 const ArticlePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  // Try to find in constants first, if not this should ideally allow looking up via Convex query
+  // For now, this hybrid approach handles legacy articles.
+  // Ideally: const article = useQuery(api.functions.articles.getById, { id: id as any }) || ARTICLES.find...
+  // But id format differs. 
+
   const article = ARTICLES.find(a => a.id === id);
+  // TODO: Add support for dynamic articles later.
+
+  const deleteArticle = useMutation(api.functions.articles.remove);
+
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [ghSession, setGhSession] = useState<any>(null);
   const [showShareToast, setShowShareToast] = useState(false);
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    const stored = localStorage.getItem('dan_papers_gh_session');
-    if (stored) {
-        setGhSession(JSON.parse(stored));
-    }
   }, [id]);
 
   if (!article) {
@@ -214,57 +223,22 @@ const ArticlePage: React.FC = () => {
   };
 
   const handleDelete = async () => {
-    if (!ghSession) return;
     setIsDeleting(true);
     try {
-        const config: GitHubConfig = {
-          token: ghSession.token,
-          owner: ghSession.user.login,
-          repo: 'dan-papers',
-          path: 'constants.ts',
-          branch: 'main'
-        };
+      // Only works if article has a convex ID. Legacy articles from constant.ts cannot be deleted via API.
+      if (article.id.includes('paper-')) { // heuristic for legacy
+        alert("Cannot delete immutable legacy articles.");
+        return;
+      }
 
-        const { content: fileContent, sha } = await fetchFileContent(config);
-        
-        const idRegex = new RegExp(`id:\\s*["']${article.id}["']`, 'm');
-        const match = fileContent.match(idRegex);
-        
-        if (!match || match.index === undefined) throw new Error("Target ID not found in registry.");
+      await deleteArticle({ id: article.id as any });
 
-        let startIndex = match.index;
-        while (startIndex >= 0 && fileContent[startIndex] !== '{') startIndex--;
-        
-        let endIndex = match.index;
-        let braceCount = 0;
-        let foundEnd = false;
-        while (endIndex < fileContent.length) {
-            if (fileContent[endIndex] === '{') braceCount++;
-            if (fileContent[endIndex] === '}') {
-              braceCount--;
-              if (braceCount === 0) {
-                foundEnd = true;
-                break;
-              }
-            }
-            endIndex++;
-        }
-
-        if (!foundEnd) throw new Error("Could not boundary-check the article object.");
-
-        const newContent = fileContent.slice(0, startIndex) + fileContent.slice(endIndex + 1).replace(/^,?\s*/, '');
-        await updateFileContent(config, newContent, sha, `Delete Research: ${article.title}`);
-        
-        // Optimistic local update
-        const idx = ARTICLES.findIndex(a => a.id === article.id);
-        if (idx > -1) ARTICLES.splice(idx, 1);
-        
-        navigate('/');
+      navigate('/');
     } catch (e: any) {
-        alert("Operation Failed: " + e.message);
+      alert("Operation Failed: " + e.message);
     } finally {
-        setIsDeleting(false);
-        setShowDeleteModal(false);
+      setIsDeleting(false);
+      setShowDeleteModal(false);
     }
   };
 
@@ -277,97 +251,97 @@ const ArticlePage: React.FC = () => {
       )}
 
       <div className="bg-white dark:bg-[#0c0c0c] px-6 md:px-16 py-12 md:py-20 rounded-[3rem] shadow-sm border border-gray-50 dark:border-zinc-800 overflow-hidden transition-colors duration-300">
-          <header className="mb-12 relative z-10">
-            <h1 className="text-4xl md:text-6xl font-bold text-medium-black dark:text-white leading-[1.1] mb-8 font-sans tracking-tight pt-8">
-              {article.title}
-            </h1>
-            <p className="text-xl md:text-2xl text-gray-400 dark:text-zinc-500 font-serif leading-relaxed italic border-l-4 border-black dark:border-white pl-8 py-2">
-              {article.subtitle}
-            </p>
-          </header>
+        <header className="mb-12 relative z-10">
+          <h1 className="text-4xl md:text-6xl font-bold text-medium-black dark:text-white leading-[1.1] mb-8 font-sans tracking-tight pt-8">
+            {article.title}
+          </h1>
+          <p className="text-xl md:text-2xl text-gray-400 dark:text-zinc-500 font-serif leading-relaxed italic border-l-4 border-black dark:border-white pl-8 py-2">
+            {article.subtitle}
+          </p>
+        </header>
 
-          <div className="flex items-center justify-between mb-16 border-b border-gray-100 dark:border-zinc-800 pb-12">
-            <div className="flex items-center gap-5">
-              <img 
-                src={article.authorImage || (article.author === CURRENT_USER.name ? CURRENT_USER.image : `https://api.dicebear.com/7.x/initials/svg?seed=${article.author}`)} 
-                alt="Author" 
-                className="w-14 h-14 rounded-full object-cover border-2 border-white dark:border-zinc-800 shadow-md" 
-              />
-              <div className="font-sans">
-                <span className="font-bold text-medium-black dark:text-white block text-base tracking-tight">{article.author}</span>
-                <div className="text-xs text-medium-gray dark:text-zinc-500 flex items-center gap-3 mt-1">
-                  <span className="bg-gray-100 dark:bg-zinc-800 px-2 py-0.5 rounded uppercase font-bold text-[9px] dark:text-zinc-300">{article.date}</span>
-                  <span className="opacity-30">·</span>
-                  <span className="font-medium">{article.readTime} min read</span>
-                </div>
+        <div className="flex items-center justify-between mb-16 border-b border-gray-100 dark:border-zinc-800 pb-12">
+          <div className="flex items-center gap-5">
+            <img
+              src={article.authorImage || (article.author === CURRENT_USER.name ? CURRENT_USER.image : `https://api.dicebear.com/7.x/initials/svg?seed=${article.author}`)}
+              alt="Author"
+              className="w-14 h-14 rounded-full object-cover border-2 border-white dark:border-zinc-800 shadow-md"
+            />
+            <div className="font-sans">
+              <span className="font-bold text-medium-black dark:text-white block text-base tracking-tight">{article.author}</span>
+              <div className="text-xs text-medium-gray dark:text-zinc-500 flex items-center gap-3 mt-1">
+                <span className="bg-gray-100 dark:bg-zinc-800 px-2 py-0.5 rounded uppercase font-bold text-[9px] dark:text-zinc-300">{article.date}</span>
+                <span className="opacity-30">·</span>
+                <span className="font-medium">{article.readTime} min read</span>
               </div>
             </div>
+          </div>
 
-            <div className="flex items-center gap-4 md:gap-8 text-gray-400">
-              {ghSession && (
-                <button onClick={() => setShowDeleteModal(true)} title="Delete Paper" className="hover:text-red-500 transition-colors p-2">
-                    <Trash2 size={22} />
-                </button>
-              )}
-              <button onClick={handleShare} title="Share Link" className="hover:text-black dark:hover:text-white transition-colors p-2">
-                <Share size={22} />
+          <div className="flex items-center gap-4 md:gap-8 text-gray-400">
+            {user && (
+              <button onClick={() => setShowDeleteModal(true)} title="Delete Paper" className="hover:text-red-500 transition-colors p-2">
+                <Trash2 size={22} />
               </button>
-              <button onClick={handleEdit} title="Edit Paper" className="hover:text-black dark:hover:text-white transition-colors p-2">
-                <MoreHorizontal size={22} />
-              </button>
-            </div>
+            )}
+            <button onClick={handleShare} title="Share Link" className="hover:text-black dark:hover:text-white transition-colors p-2">
+              <Share size={22} />
+            </button>
+            <button onClick={handleEdit} title="Edit Paper" className="hover:text-black dark:hover:text-white transition-colors p-2">
+              <MoreHorizontal size={22} />
+            </button>
           </div>
+        </div>
 
-          {article.image && (
-            <div className="mb-16 rounded-3xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm">
-              <img src={article.image} alt="Cover" className="w-full h-auto max-h-[500px] object-cover" />
-            </div>
-          )}
-
-          <div className="article-body">
-            {renderArticleContent(article.content)}
+        {article.image && (
+          <div className="mb-16 rounded-3xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm">
+            <img src={article.image} alt="Cover" className="w-full h-auto max-h-[500px] object-cover" />
           </div>
+        )}
 
-          <div className="flex flex-wrap gap-3 mt-16 pt-10 border-t border-gray-100 dark:border-zinc-800">
-            {article.tags.map(tag => (
-              <span key={tag} className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 text-gray-400 dark:text-zinc-500 px-6 py-2 rounded-full text-[10px] font-sans font-bold uppercase tracking-[0.25em] shadow-sm">
-                {tag}
-              </span>
-            ))}
-          </div>
+        <div className="article-body">
+          {renderArticleContent(article.content)}
+        </div>
+
+        <div className="flex flex-wrap gap-3 mt-16 pt-10 border-t border-gray-100 dark:border-zinc-800">
+          {article.tags.map(tag => (
+            <span key={tag} className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 text-gray-400 dark:text-zinc-500 px-6 py-2 rounded-full text-[10px] font-sans font-bold uppercase tracking-[0.25em] shadow-sm">
+              {tag}
+            </span>
+          ))}
+        </div>
       </div>
 
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-[100] backdrop-blur-xl">
-            <div className="bg-white dark:bg-[#0c0c0c] rounded-[2.5rem] shadow-2xl w-full max-w-sm p-12 font-sans border border-gray-100 dark:border-zinc-800 animate-in fade-in zoom-in duration-300">
-                <div className="flex flex-col items-center text-center">
-                    <div className="w-20 h-20 bg-red-50 dark:bg-red-950/30 text-red-500 rounded-3xl flex items-center justify-center mb-8 rotate-3 shadow-inner">
-                        <AlertTriangle size={40} />
-                    </div>
-                    <h3 className="text-2xl font-bold text-black dark:text-white mb-3 tracking-tight">Revoke Publication?</h3>
-                    <p className="text-sm text-gray-500 dark:text-zinc-500 mb-10 leading-relaxed">This research will be permanently purged from the registry.</p>
-                </div>
-                
-                <div className="bg-gray-50 dark:bg-zinc-900 rounded-2xl p-6 mb-8 border border-gray-100 dark:border-zinc-800 flex items-center gap-4">
-                   <ShieldCheck size={20} className="text-blue-500" />
-                   <div className="text-left">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Authenticated as</p>
-                      <p className="text-xs font-bold text-black dark:text-white">{ghSession.user.login}</p>
-                   </div>
-                </div>
-
-                <div className="flex flex-col gap-4">
-                    <button 
-                      onClick={handleDelete} 
-                      disabled={isDeleting} 
-                      className="w-full py-5 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-2xl shadow-red-500/20 hover:bg-red-700 transition-all flex items-center justify-center gap-2"
-                    >
-                        {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-                        {isDeleting ? 'Purging...' : 'Confirm Purge'}
-                    </button>
-                    <button onClick={() => setShowDeleteModal(false)} className="w-full py-2 text-gray-400 hover:text-black dark:hover:text-white text-[10px] font-black uppercase tracking-widest transition-colors">Cancel</button>
-                </div>
+          <div className="bg-white dark:bg-[#0c0c0c] rounded-[2.5rem] shadow-2xl w-full max-w-sm p-12 font-sans border border-gray-100 dark:border-zinc-800 animate-in fade-in zoom-in duration-300">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-20 h-20 bg-red-50 dark:bg-red-950/30 text-red-500 rounded-3xl flex items-center justify-center mb-8 rotate-3 shadow-inner">
+                <AlertTriangle size={40} />
+              </div>
+              <h3 className="text-2xl font-bold text-black dark:text-white mb-3 tracking-tight">Revoke Publication?</h3>
+              <p className="text-sm text-gray-500 dark:text-zinc-500 mb-10 leading-relaxed">This research will be permanently purged from the registry.</p>
             </div>
+
+            <div className="bg-gray-50 dark:bg-zinc-900 rounded-2xl p-6 mb-8 border border-gray-100 dark:border-zinc-800 flex items-center gap-4">
+              <ShieldCheck size={20} className="text-blue-500" />
+              <div className="text-left">
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Authenticated as</p>
+                <p className="text-xs font-bold text-black dark:text-white">{user?.name}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="w-full py-5 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-2xl shadow-red-500/20 hover:bg-red-700 transition-all flex items-center justify-center gap-2"
+              >
+                {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                {isDeleting ? 'Purging...' : 'Confirm Purge'}
+              </button>
+              <button onClick={() => setShowDeleteModal(false)} className="w-full py-2 text-gray-400 hover:text-black dark:hover:text-white text-[10px] font-black uppercase tracking-widest transition-colors">Cancel</button>
+            </div>
+          </div>
         </div>
       )}
     </article>

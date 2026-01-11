@@ -6,6 +6,7 @@ import ArticlePage from './components/ArticlePage';
 import WritePage from './components/WritePage';
 
 const App: React.FC = () => {
+  console.log("App component rendering");
   return (
     <Router>
       <Layout>
