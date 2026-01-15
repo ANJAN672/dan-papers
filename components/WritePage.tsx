@@ -105,7 +105,7 @@ const WritePage: React.FC = () => {
         content,
         tags: tags.split(',').map(t => t.trim()).filter(t => t.length > 0),
       });
-      
+
       // Navigate to home after success
       setIsPublishing(false);
       navigate('/');
@@ -175,6 +175,11 @@ const WritePage: React.FC = () => {
             type="text" placeholder="Abstract Headline"
             className="text-xl md:text-2xl font-serif text-gray-400 dark:text-zinc-500 border-none outline-none focus:ring-0 bg-transparent p-0 italic"
             value={subtitle} onChange={(e) => setSubtitle(e.target.value)}
+          />
+          <input
+            type="url" placeholder="Cover Image URL (Optional)"
+            className="text-base font-sans text-gray-400 dark:text-zinc-500 border-none outline-none focus:ring-0 bg-transparent p-0 placeholder:text-gray-300 dark:placeholder:text-zinc-700"
+            value={image} onChange={(e) => setImage(e.target.value)}
           />
           <textarea
             placeholder="Research Body..."
