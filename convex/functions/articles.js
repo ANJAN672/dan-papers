@@ -147,12 +147,17 @@ export const remove = mutation({
       throw new Error("Not authenticated");
     }
 
+    const user = await ctx.db.get(userId);
+    // Check if user is an admin
+    const admins = ["somdipto", "KhalandarS"];
+    const isAdmin = admins.includes(user?.username);
+
     const article = await ctx.db.get(args.id);
     if (!article) {
       throw new Error("Article not found");
     }
 
-    if (article.authorId !== userId) {
+    if (!isAdmin && article.authorId !== userId) {
       throw new Error("Unauthorized: You do not own this article");
     }
 

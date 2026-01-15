@@ -25,6 +25,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
             (githubProfile as any).avatar_url ??
             (githubProfile as any).picture ??
             undefined,
+          username: (githubProfile as any).login,
         };
       },
     }),
